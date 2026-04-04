@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: containermaster-backend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${PORT:-3000}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - STATS_UPDATE_INTERVAL=${STATS_UPDATE_INTERVAL:-5000}
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - containermaster
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # Optional: Traefik reverse proxy for HTTPS
+  # Uncomment to enable
+  # traefik:
+  #   image: traefik:v2.10
+  #   container_name: containermaster-traefik
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #     - "8080:8080"  # Dashboard
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - ./traefik.yml:/traefik.yml:ro
+  #     - ./acme.json:/acme.json
+  #   networks:
+  #     - containermaster
+
+  # Optional: Watchtower for automatic updates
+  # Uncomment to enable
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   container_name: containermaster-watchtower
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #   environment:
+  #     - WATCHTOWER_CLEANUP=true
+  #     - WATCHTOWER_SCHEDULE=0 2 * * *  # 2 AM daily
+  #     - WATCHTOWER_LABEL_ENABLE=true
+
+networks:
+  containermaster:
+    driver: bridge
+
+volumes:
+  acme:
+    driver: local
