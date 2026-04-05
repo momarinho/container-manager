@@ -93,7 +93,7 @@ export class LogStreamerService {
         this.streams.delete(containerId);
       });
 
-      logStream.on('error', (error) => {
+      logStream.on('error', (error: any) => {
         logger.error(`Log stream error for container ${containerId}:`, error);
         clearInterval(flushTimer);
         this.streams.delete(containerId);

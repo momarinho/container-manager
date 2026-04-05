@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
-import { Search as SearchIcon, Terminal, Activity } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { Search as SearchIcon, Terminal, Activity, LogOut, Settings } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 import { useRouter } from 'expo-router';
+import { useAuth } from '../../src/contexts/AuthContext';
 
 const mockContainers = [
   { id: '4f92bc8102ae', name: 'nginx-proxy', status: 'running', cpu: '15%', memory: '256MB', uptime: '14d 2h', image: 'nginx:latest' },
@@ -12,6 +13,11 @@ const mockContainers = [
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -19,6 +25,15 @@ export default function DashboardScreen() {
         <View style={styles.titleContainer}>
           <Text style={styles.title}>🐳 Container Manager</Text>
           <Text style={styles.subtitle}>SYSTEM_STATUS: OPTIMIZED // ACTIVE_NODES: 03</Text>
+        </View>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
+            <LogOut size={20} color={Colors.outline} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton}>
+            <Settings size={20} color={Colors.outline} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.searchContainer}>
@@ -72,7 +87,7 @@ export default function DashboardScreen() {
               styles.card,
               container.status === 'running' ? styles.cardRunning : styles.cardStopped
             ]}
-            onPress={() => router.push(`/details/${container.id}`)}
+            onPress={() => router.push('/modal' as any)}
           >
             <View style={styles.cardHeader}>
               <View style={[styles.statusDot, container.status === 'running' ? styles.statusRunning : styles.statusStopped]} />
@@ -88,7 +103,7 @@ export default function DashboardScreen() {
                 <View style={styles.metricRow}>
                   <Text style={styles.metricValue}>{container.cpu}</Text>
                   <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: container.cpu }]} />
+                    <View style={[styles.progressFill, { width: parseInt(container.cpu) || 0 }]} />
                   </View>
                 </View>
               </View>
@@ -133,6 +148,16 @@ const styles = StyleSheet.create({
   titleContainer: {
     marginBottom: 24,
   },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  headerButton: {
+    padding: 8,
+    backgroundColor: Colors.surfaceLow,
+    borderRadius: 8,
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -170,7 +195,6 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    minWidth: '40%',
     backgroundColor: Colors.surface,
     padding: 16,
     borderWidth: 1,

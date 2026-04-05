@@ -3,7 +3,7 @@ import { logger } from '../utils/logger';
 import { config } from '../utils/config';
 import { verifyJwt } from '../utils/jwt.util';
 import { logStreamerService } from '../services/logStreamer.service';
-import { terminalService } from '../services/terminal.service';
+// import { terminalService } from '../services/terminal.service';
 import { systemStatsService } from '../services/systemStats.service';
 import type { WebSocketWithSession } from '../types/ws';
 
@@ -134,34 +134,9 @@ export class WebSocketHandler {
     ws.send(JSON.stringify({ type: 'ready', message: 'Send shell command to start session' }));
   }
 
-  private async handleTerminalMessage(ws: WebSocketWithSession, containerId: string, data: any): Promise<void> {
-    const session = ws.session;
-
-    if (data.type === 'start' && !session) {
-      const { shell = '/bin/sh', cols = 80, rows = 24 } = data;
-      try {
-        const sessionId = await terminalService.createSession(containerId, shell, cols, rows);
-
-        terminalService.onData(sessionId, (output) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'output', data: output }));
-          }
-        });
-
-        ws.session = { type: 'terminal', containerId, sessionId };
-        ws.send(JSON.stringify({ type: 'started', sessionId }));
-      } catch (error) {
-        ws.send(JSON.stringify({ type: 'error', message: (error as Error).message }));
-        ws.close(1011, (error as Error).message);
-      }
-    } else if (data.type === 'input' && session?.sessionId) {
-      terminalService.write(session.sessionId, data.data);
-    } else if (data.type === 'resize' && session?.sessionId) {
-      terminalService.resize(session.sessionId, data.cols, data.rows);
-    } else if (data.type === 'close' && session?.sessionId) {
-      terminalService.closeSession(session.sessionId);
-      ws.send(JSON.stringify({ type: 'closed' }));
-    }
+  private async handleTerminalMessage(_ws: WebSocketWithSession, _containerId: string, _data: any): Promise<void> {
+    // Terminal disabled - requires native module compilation
+    // To enable, uncomment terminalService import and restore the original implementation
   }
 
   private handleStatsConnection(ws: WebSocketWithSession): void {
@@ -182,9 +157,10 @@ export class WebSocketHandler {
       if (session.unsubscribe) {
         session.unsubscribe();
       }
-      if (session.type === 'terminal' && session.sessionId) {
-        terminalService.closeSession(session.sessionId);
-      }
+      // Terminal disabled
+      // if (session.type === 'terminal' && session.sessionId) {
+      //   terminalService.closeSession(session.sessionId);
+      // }
       logger.info(`WebSocket connection closed: ${session.type}`);
     }
   }

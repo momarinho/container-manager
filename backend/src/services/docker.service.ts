@@ -113,18 +113,10 @@ export class DockerService {
   async getContainerLogs(
     id: string,
     options: LogOptions = {}
-  ): Promise<NodeJS.ReadableStream> {
+  ): Promise<any> {
     try {
       const container = this.docker.getContainer(id);
-      return await container.logs({
-        stdout: options.stdout !== false,
-        stderr: options.stderr !== false,
-        follow: options.follow || false,
-        timestamps: options.timestamps || false,
-        tail: options.tail || '100',
-        since: options.since,
-        until: options.until,
-      });
+      return await container.logs(options as any);
     } catch (error) {
       logger.error(`Failed to get logs for container ${id}:`, error);
       throw new Error('Failed to get container logs');
@@ -169,14 +161,14 @@ export class DockerService {
   private transformContainer(dockerContainer: ContainerInfo): Container {
     return {
       id: dockerContainer.Id,
-      names: dockerContainer.Names.map((n) => n.replace(/^\//, '')),
+      names: dockerContainer.Names.map((n: string) => n.replace(/^\//, '')),
       image: dockerContainer.Image,
       imageId: dockerContainer.ImageID,
       command: dockerContainer.Command,
       created: dockerContainer.Created,
       state: dockerContainer.State,
       status: dockerContainer.Status,
-      ports: (dockerContainer.Ports || []).map((p) => ({
+      ports: (dockerContainer.Ports || []).map((p: any) => ({
         IP: p.IP,
         privatePort: p.PrivatePort,
         publicPort: p.PublicPort,
@@ -200,32 +192,31 @@ export class DockerService {
       Labels: dockerDetails.Config?.Labels || {},
       SizeRw: 0,
       SizeRootFs: 0,
-      HostConfig: {},
-      NetworkSettings: {},
+      HostConfig: { NetworkMode: '' },
+      NetworkSettings: { Networks: {} },
       Mounts: [],
-    });
+    } as any);
 
     return {
       ...container,
       hostConfig: {
-        portBindings: dockerDetails.HostConfig?.PortBindings,
+        portBindings: dockerDetails.HostConfig?.PortBindings as any,
         binds: dockerDetails.HostConfig?.Binds,
-        restartPolicy: dockerDetails.HostConfig?.RestartPolicy,
+        restartPolicy: dockerDetails.HostConfig?.RestartPolicy as any,
       },
       config: {
         labels: dockerDetails.Config?.Labels,
         env: dockerDetails.Config?.Env,
         cmd: dockerDetails.Config?.Cmd,
-        entrypoint: dockerDetails.Config?.Entrypoint,
+        entrypoint: dockerDetails.Config?.Entrypoint as any,
         workingDir: dockerDetails.Config?.WorkingDir,
         user: dockerDetails.Config?.User,
       },
       networkSettings: {
-        networks: dockerDetails.NetworkSettings?.Networks,
-        ipAddress: dockerDetails.NetworkSettings?.IPAddress,
-        ipPrefixLen: dockerDetails.NetworkSettings?.IPPrefixLen,
-        gateway: dockerDetails.NetworkSettings?.Gateway,
-        bridge: dockerDetails.NetworkSettings?.Bridge,
+        networks: dockerDetails.NetworkSettings?.Networks as any,
+        ipAddress: (dockerDetails.NetworkSettings as any)?.IPAddress,
+        ipPrefixLen: (dockerDetails.NetworkSettings as any)?.IPPrefixLen,
+        gateway: (dockerDetails.NetworkSettings as any)?.Gateway,
       },
       mounts: (dockerDetails.Mounts || []).map((m: any) => ({
         type: m.Type as 'bind' | 'volume' | 'tmpfs',
