@@ -1,45 +1,24 @@
 import { Request, Response, NextFunction } from 'express';
-import { authService } from '../../services/auth.service';
-import { logger } from '../../utils/logger';
-import type { JWTPayload } from '../../types/auth.types';
+import { verifyJwt } from '../../utils/jwt.util';
 
 export interface AuthRequest extends Request {
-  user?: JWTPayload;
+  user?: { id: string; username: string; [k: string]: any };
 }
 
-export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Authorization header required' });
-    return;
-  }
-
-  const token = authHeader.substring(7);
-
+export function jwtMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+  const header = req.header('Authorization') || '';
+  const match = header.match(/^Bearer (.+)$/);
+  if (!match) return res.status(401).json({ error: 'Missing token' });
+  const token = match[1];
   try {
-    const payload = authService.verifyToken(token);
-    req.user = payload;
-    next();
-  } catch (error) {
-    logger.error('Authentication failed:', error);
-    res.status(401).json({ error: 'Invalid or expired token' });
+    const payload = verifyJwt(token);
+    // payload expected to contain userId, username
+    req.user = { id: (payload as any).userId, username: (payload as any).username };
+    return next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
-};
+}
 
-export const optionalAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-
-    try {
-      const payload = authService.verifyToken(token);
-      req.user = payload;
-    } catch (error) {
-      // Ignore auth errors for optional auth
-    }
-  }
-
-  next();
-};
+// Export as alias for routes
+export const authMiddleware = jwtMiddleware;

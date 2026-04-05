@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import type { Response } from 'express';
 import { dockerService } from '../../services/docker.service';
 import { logger } from '../../utils/logger';
 import type { AuthRequest } from '../middleware/auth.middleware';

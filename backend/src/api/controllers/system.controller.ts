@@ -1,9 +1,9 @@
-import { Request, Response } from 'express';
+import type { Response } from 'express';
 import { systemStatsService } from '../../services/systemStats.service';
 import { logger } from '../../utils/logger';
 import type { AuthRequest } from '../middleware/auth.middleware';
 
-export const getStats = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getStats = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     const stats = systemStatsService.getCurrentStats();
     res.json({ stats });
@@ -24,7 +24,7 @@ export const getStatsHistory = async (req: AuthRequest, res: Response): Promise<
   }
 };
 
-export const getSystemInfo = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getSystemInfo = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     const info = await systemStatsService.getSystemInfo();
     res.json({ info });

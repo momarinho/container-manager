@@ -134,8 +134,8 @@ export class SystemStatsService {
 
   private async getDockerVersion(): Promise<{ version: string; apiVersion: string }> {
     try {
-      const Docker = (await import('dockerode')).default;
-      const getDockerSocketPath = (await import('../utils/dockerSocket')).getDockerSocketPath;
+      const { default: Docker } = await import('dockerode');
+      const { getDockerSocketPath } = await import('../utils/dockerSocket');
       const docker = new Docker({ socketPath: getDockerSocketPath() });
       const version = await docker.version();
       return {

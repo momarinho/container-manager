@@ -1,10 +1,11 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { logger } from '../utils/logger';
 import { config } from '../utils/config';
-import { authService } from '../services/auth.service';
+import { verifyJwt } from '../utils/jwt.util';
 import { logStreamerService } from '../services/logStreamer.service';
 import { terminalService } from '../services/terminal.service';
 import { systemStatsService } from '../services/systemStats.service';
+import type { WebSocketWithSession } from '../types/ws';
 
 export class WebSocketHandler {
   private wss: WebSocketServer;
@@ -20,7 +21,7 @@ export class WebSocketHandler {
   }
 
   private setupConnectionHandler(): void {
-    this.wss.on('connection', (ws: WebSocket & { isAlive?: boolean; session?: any }, req) => {
+    this.wss.on('connection', (ws: WebSocketWithSession, req) => {
       const url = new URL(req.url || '', `http://${req.headers.host}`);
       const path = url.pathname;
       const token = url.searchParams.get('token');
@@ -33,8 +34,8 @@ export class WebSocketHandler {
       }
 
       try {
-        const payload = authService.verifyToken(token);
-        logger.info(`WebSocket connection established: ${path} for user ${payload.username}`);
+        const payload = verifyJwt<{ userId: string; username: string }>(token);
+        logger.info(`WebSocket connection established: ${path} for user ${payload?.username}`);
       } catch (error) {
         ws.send(JSON.stringify({ type: 'error', message: 'Invalid token' }));
         ws.close(1008, 'Invalid token');
@@ -73,7 +74,7 @@ export class WebSocketHandler {
     });
   }
 
-  private handleLogsConnection(ws: WebSocket, path: string): void {
+  private handleLogsConnection(ws: WebSocketWithSession, path: string): void {
     const containerId = path.split('/')[3];
 
     if (!containerId) {
@@ -82,13 +83,13 @@ export class WebSocketHandler {
       return;
     }
 
-    const unsubscribe = logStreamerService.subscribe(containerId, (data) => {
+    logStreamerService.subscribe(containerId, (data) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'log', containerId, data }));
       }
+    }).then((unsubscribe) => {
+      ws.session = { type: 'logs', containerId, unsubscribe };
     });
-
-    ws.session = { type: 'logs', containerId, unsubscribe };
 
     ws.on('message', (message: Buffer) => {
       try {
@@ -102,7 +103,7 @@ export class WebSocketHandler {
     ws.send(JSON.stringify({ type: 'connected', containerId }));
   }
 
-  private handleLogsMessage(ws: WebSocket, data: any): void {
+  private handleLogsMessage(ws: WebSocketWithSession, data: any): void {
     if (data.action === 'unsubscribe') {
       const session = ws.session;
       if (session && session.unsubscribe) {
@@ -112,7 +113,7 @@ export class WebSocketHandler {
     }
   }
 
-  private handleTerminalConnection(ws: WebSocket, path: string): void {
+  private handleTerminalConnection(ws: WebSocketWithSession, path: string): void {
     const containerId = path.split('/')[3];
 
     if (!containerId) {
@@ -133,7 +134,7 @@ export class WebSocketHandler {
     ws.send(JSON.stringify({ type: 'ready', message: 'Send shell command to start session' }));
   }
 
-  private async handleTerminalMessage(ws: WebSocket, containerId: string, data: any): void {
+  private async handleTerminalMessage(ws: WebSocketWithSession, containerId: string, data: any): Promise<void> {
     const session = ws.session;
 
     if (data.type === 'start' && !session) {
@@ -153,17 +154,17 @@ export class WebSocketHandler {
         ws.send(JSON.stringify({ type: 'error', message: (error as Error).message }));
         ws.close(1011, (error as Error).message);
       }
-    } else if (data.type === 'input' && session) {
+    } else if (data.type === 'input' && session?.sessionId) {
       terminalService.write(session.sessionId, data.data);
-    } else if (data.type === 'resize' && session) {
+    } else if (data.type === 'resize' && session?.sessionId) {
       terminalService.resize(session.sessionId, data.cols, data.rows);
-    } else if (data.type === 'close' && session) {
+    } else if (data.type === 'close' && session?.sessionId) {
       terminalService.closeSession(session.sessionId);
       ws.send(JSON.stringify({ type: 'closed' }));
     }
   }
 
-  private handleStatsConnection(ws: WebSocket): void {
+  private handleStatsConnection(ws: WebSocketWithSession): void {
     const unsubscribe = systemStatsService.subscribe((stats) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'stats', data: stats }));
@@ -174,7 +175,7 @@ export class WebSocketHandler {
     ws.send(JSON.stringify({ type: 'connected' }));
   }
 
-  private handleClose(ws: WebSocket): void {
+  private handleClose(ws: WebSocketWithSession): void {
     const session = ws.session;
 
     if (session) {

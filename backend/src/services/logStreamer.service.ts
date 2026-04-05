@@ -1,11 +1,10 @@
-import { Readable } from 'stream';
 import { logger } from '../utils/logger';
 import { dockerService } from './docker.service';
 import { config } from '../utils/config';
 
 export interface LogStream {
   containerId: string;
-  stream: Readable;
+  stream: NodeJS.ReadableStream & { destroy?: () => void; destroyed?: boolean };
   lastActivity: number;
   subscribers: Set<(data: string) => void>;
 }
@@ -135,10 +134,10 @@ export class LogStreamerService {
 
   private closeStream(containerId: string): void {
     const stream = this.streams.get(containerId);
-    if (stream) {
+    if (stream && stream.stream.destroy) {
       stream.stream.destroy();
-      this.streams.delete(containerId);
     }
+    this.streams.delete(containerId);
   }
 
   private isStreamActive(stream: LogStream): boolean {

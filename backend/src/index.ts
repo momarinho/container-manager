@@ -24,13 +24,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging
-app.use((req, res, next) => {
+app.use((req, _res, next) => {
   logger.info(`${req.method} ${req.path}`);
   next();
 });
 
 // Health check (no auth required)
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -49,8 +49,8 @@ app.use(notFoundHandler);
 // Error handler
 app.use(errorHandler);
 
-// WebSocket handler
-const wsHandler = new WebSocketHandler(server);
+// WebSocket handler (initialized for side effects)
+void new WebSocketHandler(server);
 
 // Start server
 server.listen(config.port, () => {

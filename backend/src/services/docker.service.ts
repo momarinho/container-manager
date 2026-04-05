@@ -1,4 +1,4 @@
-import Docker from 'dockerode';
+import Docker, { type ContainerInfo, type ContainerInspectInfo, type ContainerStats as DockerContainerStats } from 'dockerode';
 import { getDockerSocketPath } from '../utils/dockerSocket';
 import { logger } from '../utils/logger';
 import type { Container, ContainerDetails, ContainerStats, LogOptions } from '../types/container.types';
@@ -166,7 +166,7 @@ export class DockerService {
     }
   }
 
-  private transformContainer(dockerContainer: Docker.ContainerInfo): Container {
+  private transformContainer(dockerContainer: ContainerInfo): Container {
     return {
       id: dockerContainer.Id,
       names: dockerContainer.Names.map((n) => n.replace(/^\//, '')),
@@ -186,18 +186,23 @@ export class DockerService {
     };
   }
 
-  private transformContainerDetails(dockerDetails: Docker.ContainerInspectInfo): ContainerDetails {
+  private transformContainerDetails(dockerDetails: ContainerInspectInfo): ContainerDetails {
     const container = this.transformContainer({
       Id: dockerDetails.Id,
       Names: dockerDetails.Name ? [dockerDetails.Name.replace(/^\//, '')] : [],
       Image: dockerDetails.Config?.Image || '',
-      ImageID: dockerDetails.Image,
+      ImageID: dockerDetails.Image || '',
       Command: dockerDetails.Config?.Cmd?.join(' ') || '',
       Created: Math.floor(new Date(dockerDetails.Created).getTime() / 1000),
       State: dockerDetails.State?.Status || '',
       Status: dockerDetails.State?.Status || '',
       Ports: [],
       Labels: dockerDetails.Config?.Labels || {},
+      SizeRw: 0,
+      SizeRootFs: 0,
+      HostConfig: {},
+      NetworkSettings: {},
+      Mounts: [],
     });
 
     return {
@@ -222,7 +227,7 @@ export class DockerService {
         gateway: dockerDetails.NetworkSettings?.Gateway,
         bridge: dockerDetails.NetworkSettings?.Bridge,
       },
-      mounts: (dockerDetails.Mounts || []).map((m) => ({
+      mounts: (dockerDetails.Mounts || []).map((m: any) => ({
         type: m.Type as 'bind' | 'volume' | 'tmpfs',
         source: m.Source,
         destination: m.Destination,
@@ -233,30 +238,31 @@ export class DockerService {
     };
   }
 
-  private transformStats(dockerStats: Docker.ContainerStats, id: string): ContainerStats {
+  private transformStats(dockerStats: DockerContainerStats, id: string): ContainerStats {
     const cpuDelta = dockerStats.cpu_stats.cpu_usage.total_usage - dockerStats.precpu_stats.cpu_usage.total_usage;
     const systemDelta = dockerStats.cpu_stats.system_cpu_usage - dockerStats.precpu_stats.system_cpu_usage;
     const cpuPercent = systemDelta > 0 ? (cpuDelta / systemDelta) * 100 * dockerStats.cpu_stats.online_cpus : 0;
 
-    const memoryUsage = dockerStats.memory_stats.usage || 0;
-    const memoryLimit = dockerStats.memory_stats.limit || 0;
+    const memoryUsage = (dockerStats.memory_stats.usage as number) || 0;
+    const memoryLimit = (dockerStats.memory_stats.limit as number) || 0;
     const memoryPercent = memoryLimit > 0 ? (memoryUsage / memoryLimit) * 100 : 0;
 
-    const network = Object.values(dockerStats.networks || {}).reduce(
-      (acc, n) => ({
-        rx: acc.rx + n.rx_bytes,
-        tx: acc.tx + n.tx_bytes,
+    const networks = Object.values(dockerStats.networks || {}) as any[];
+    const network = networks.reduce(
+      (acc: { rx: number; tx: number }, n: any) => ({
+        rx: acc.rx + (n.rx_bytes || 0),
+        tx: acc.tx + (n.tx_bytes || 0),
       }),
       { rx: 0, tx: 0 }
     );
 
     const ioStats = dockerStats.blkio_stats?.io_service_bytes_recursive || [];
     const blockRead = ioStats
-      .filter((io) => io.op === 'Read')
-      .reduce((sum, io) => sum + io.value, 0);
+      .filter((io: any) => io.op === 'Read')
+      .reduce((sum: number, io: any) => sum + (io.value || 0), 0);
     const blockWrite = ioStats
-      .filter((io) => io.op === 'Write')
-      .reduce((sum, io) => sum + io.value, 0);
+      .filter((io: any) => io.op === 'Write')
+      .reduce((sum: number, io: any) => sum + (io.value || 0), 0);
 
     return {
       name: dockerStats.name || '',
