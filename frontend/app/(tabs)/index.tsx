@@ -1,153 +1,233 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TextInput, 
-  TouchableOpacity, 
-  Alert,
-  RefreshControl,
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import {
   ActivityIndicator,
-  Switch,
+  Alert,
   Platform,
-} from 'react-native';
-import { Search as SearchIcon, LogOut, Settings, Play, Square, RotateCw } from 'lucide-react-native';
-import { Colors } from '../../constants/Colors';
-import { useRouter } from 'expo-router';
-import { useAuth } from '../../src/contexts/AuthContext';
-import { systemService } from '../../src/services/system.service';
-import { containersService } from '../../src/services/containers.service';
-import { useWebSocket } from '../../src/hooks/useWebSocket';
-import type { SystemStats } from '../../src/types/system.types';
-import type { Container } from '../../src/types/container.types';
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import {
+  LogOut,
+  Play,
+  RotateCw,
+  Search as SearchIcon,
+  Settings,
+  Square,
+} from "lucide-react-native";
+import { Colors } from "../../constants/Colors";
+import { useAuth } from "../../src/contexts/AuthContext";
+import ActionFeedbackBanner from "../../src/components/ActionFeedbackBanner";
+import { useContainerAction } from "../../src/hooks/useContainerAction";
+import { useWebSocket } from "../../src/hooks/useWebSocket";
+import { containersService } from "../../src/services/containers.service";
+import { systemService } from "../../src/services/system.service";
+import type { Container } from "../../src/types/container.types";
+import type { SystemStats } from "../../src/types/system.types";
+
+type QuickAction = "start" | "stop" | "restart";
+
+function formatUptime(hours: number): string {
+  if (hours < 24) {
+    return `${hours}H`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainder = hours % 24;
+  return `${days}D ${remainder}H`;
+}
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { logout } = useAuth();
-  
-  // Estados
+  const {
+    clearFeedback,
+    feedback,
+    pendingAction,
+    pendingContainerId,
+    runAction,
+  } = useContainerAction();
+
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [containers, setContainers] = useState<Container[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const hasLoadedOnFocusRef = useRef(false);
 
-  // WebSocket para estatísticas em tempo real
+  const loadData = useCallback(
+    async (showSpinner: boolean) => {
+      try {
+        if (showSpinner) {
+          setLoading(true);
+        }
+
+        setLoadError(null);
+
+        const [statsData, containersData] = await Promise.all([
+          systemService.getStats(),
+          containersService.list({ all: true }),
+        ]);
+
+        setStats(statsData);
+        setContainers(containersData);
+      } catch (error) {
+        console.error("Error loading dashboard data:", error);
+        setLoadError("Falha ao carregar os dados do ambiente atual.");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const showSpinner = !hasLoadedOnFocusRef.current;
+      hasLoadedOnFocusRef.current = true;
+      void loadData(showSpinner);
+    }, [loadData]),
+  );
+
   const { isConnected } = useWebSocket<SystemStats>(
-    '/stats',
+    "/stats",
     (data) => {
       if (autoRefresh) {
         setStats(data);
       }
     },
-    autoRefresh
+    autoRefresh,
   );
 
-  // Carrega dados iniciais
-  useEffect(() => {
-    loadData();
-  }, []);
+  const filteredContainers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [statsData, containersData] = await Promise.all([
-        systemService.getStats(),
-        containersService.list({ all: true })
-      ]);
-      setStats(statsData);
-      setContainers(containersData);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      Alert.alert('Erro', 'Falha ao carregar dados do sistema');
-    } finally {
-      setLoading(false);
+    if (!query) {
+      return containers;
     }
-  };
 
-  const onRefresh = async () => {
+    return containers.filter(
+      (container) =>
+        container.names.some((name) => name.toLowerCase().includes(query)) ||
+        container.image.toLowerCase().includes(query),
+    );
+  }, [containers, searchQuery]);
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
-  };
+    await loadData(false);
+  }, [loadData]);
 
   const confirmAndLogout = async () => {
     await logout();
-    router.replace('/login');
+    router.replace("/login");
   };
 
   const handleLogout = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm('Deseja realmente sair?')) {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (window.confirm("Deseja realmente sair?")) {
         void confirmAndLogout();
       }
       return;
     }
 
-    Alert.alert(
-      'Logout',
-      'Deseja realmente sair?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Sair', onPress: () => void confirmAndLogout(), style: 'destructive' }
-      ]
-    );
+    Alert.alert("Logout", "Deseja realmente sair?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Sair",
+        style: "destructive",
+        onPress: () => void confirmAndLogout(),
+      },
+    ]);
   };
 
-  const handleContainerAction = async (id: string, action: 'start' | 'stop' | 'restart') => {
-    try {
-      switch (action) {
-        case 'start':
-          await containersService.start(id);
-          break;
-        case 'stop':
-          await containersService.stop(id);
-          break;
-        case 'restart':
-          await containersService.restart(id);
-          break;
-      }
-      // Recarrega lista após ação
-      await loadData();
-      Alert.alert('Sucesso', `Container ${action}ed com sucesso`);
-    } catch (error) {
-      console.error(`Error ${action}ing container:`, error);
-      Alert.alert('Erro', `Falha ao ${action} container`);
+  const executeQuickAction = async (
+    containerId: string,
+    action: QuickAction,
+  ) => {
+    await runAction({
+      action,
+      containerId,
+      onCompleted: () => loadData(false),
+    });
+  };
+
+  const confirmQuickAction = (
+    containerId: string,
+    containerName: string,
+    action: QuickAction,
+  ) => {
+    clearFeedback();
+
+    if (action === "start") {
+      void executeQuickAction(containerId, action);
+      return;
     }
+
+    const title = action === "restart" ? "Reiniciar container" : "Parar container";
+    const message =
+      action === "restart"
+        ? `Deseja reiniciar "${containerName}"?`
+        : `Deseja parar "${containerName}"?`;
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (window.confirm(message)) {
+        void executeQuickAction(containerId, action);
+      }
+      return;
+    }
+
+    Alert.alert(title, message, [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: action === "restart" ? "Reiniciar" : "Parar",
+        style: "destructive",
+        onPress: () => void executeQuickAction(containerId, action),
+      },
+    ]);
   };
 
   const getStatusColor = (value: number): string => {
-    if (value >= 90) return Colors.error || '#ef4444';
-    if (value >= 70) return Colors.warning || '#f59e0b';
-    return Colors.success || '#10b981';
+    if (value >= 90) {
+      return Colors.error;
+    }
+    if (value >= 70) {
+      return Colors.warning;
+    }
+    return Colors.success;
   };
 
   const getContainerStatusColor = (state: string): string => {
-    if (state === 'running') return Colors.success || '#10b981';
-    if (state === 'paused') return Colors.warning || '#f59e0b';
+    if (state === "running") {
+      return Colors.success;
+    }
+    if (state === "paused") {
+      return Colors.warning;
+    }
     return Colors.outline;
   };
-
-  // Filtra containers pela busca
-  const filteredContainers = containers.filter(c => 
-    c.names.some(name => name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    c.image.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   if (loading && !stats) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Carregando...</Text>
+        <Text style={styles.loadingText}>Carregando ambiente...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView 
-      style={styles.container} 
+    <ScrollView
+      style={styles.container}
       contentContainerStyle={styles.content}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -155,9 +235,13 @@ export default function DashboardScreen() {
     >
       <View style={styles.header}>
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>🐳 Container Manager</Text>
+          <Text style={styles.title}>Container Manager</Text>
           <Text style={styles.subtitle}>
-            {stats ? `SYSTEM_STATUS: OPTIMIZED // ACTIVE_NODES: ${stats.containers.running.toString().padStart(2, '0')}` : 'Loading...'}
+            {stats
+              ? `SYSTEM_STATUS // RUNNING ${String(
+                  stats.containers.running,
+                ).padStart(2, "0")}`
+              : "SYSTEM_STATUS // OFFLINE"}
           </Text>
         </View>
 
@@ -165,155 +249,228 @@ export default function DashboardScreen() {
           <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
             <LogOut size={20} color={Colors.outline} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push("/(tabs)/servers")}
+          >
             <Settings size={20} color={Colors.outline} />
           </TouchableOpacity>
         </View>
 
-        {/* Busca */}
         <View style={styles.searchContainer}>
-          <SearchIcon size={16} color={Colors.outline} style={styles.searchIcon} />
+          <SearchIcon
+            size={16}
+            color={Colors.outline}
+            style={styles.searchIcon}
+          />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search containers..."
+            placeholder="Buscar por nome ou imagem..."
             placeholderTextColor={Colors.outline}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
 
-        {/* Stats do Sistema */}
-        {stats && (
+        {loadError ? (
+          <View style={styles.loadErrorCard}>
+            <Text style={styles.loadErrorText}>{loadError}</Text>
+          </View>
+        ) : null}
+
+        {stats ? (
           <>
             <View style={styles.autoRefreshContainer}>
               <Text style={styles.autoRefreshLabel}>Atualização automática</Text>
               <Switch
                 value={autoRefresh}
                 onValueChange={setAutoRefresh}
-                trackColor={{ false: '#374151', true: Colors.primary }}
+                trackColor={{ false: "#374151", true: Colors.primary }}
                 thumbColor="#fff"
               />
-              {isConnected && autoRefresh && (
+              {isConnected && autoRefresh ? (
                 <View style={styles.connectedDot} />
-              )}
+              ) : null}
             </View>
 
             <View style={styles.statsGrid}>
               <View style={styles.statCard}>
-                <Text style={styles.statLabel}>CPU LOAD</Text>
+                <Text style={styles.statLabel}>CPU</Text>
                 <View style={styles.statValueContainer}>
-                  <Text style={[styles.statValue, { color: getStatusColor(stats.cpu) }]}>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      { color: getStatusColor(stats.cpu) },
+                    ]}
+                  >
                     {stats.cpu.toFixed(1)}
                   </Text>
                   <Text style={styles.statUnit}>%</Text>
                 </View>
               </View>
+
               <View style={styles.statCard}>
                 <Text style={styles.statLabel}>MEMORY</Text>
                 <View style={styles.statValueContainer}>
-                  <Text style={[styles.statValue, { color: getStatusColor(stats.memory) }]}>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      { color: getStatusColor(stats.memory) },
+                    ]}
+                  >
                     {stats.memory.toFixed(0)}
                   </Text>
                   <Text style={styles.statUnit}>%</Text>
                 </View>
               </View>
+
               <View style={styles.statCard}>
                 <Text style={styles.statLabel}>DISK</Text>
                 <View style={styles.statValueContainer}>
-                  <Text style={[styles.statValue, { color: getStatusColor(stats.disk) }]}>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      { color: getStatusColor(stats.disk) },
+                    ]}
+                  >
                     {stats.disk.toFixed(0)}
                   </Text>
                   <Text style={styles.statUnit}>%</Text>
                 </View>
               </View>
+
               <View style={styles.statCard}>
                 <Text style={styles.statLabel}>UPTIME</Text>
                 <View style={styles.statValueContainer}>
                   <Text style={[styles.statValue, { color: Colors.onSurface }]}>
-                    {Math.floor(stats.uptime / 3600)}
+                    {formatUptime(Math.floor(stats.uptime / 3600))}
                   </Text>
-                  <Text style={styles.statUnit}>HRS</Text>
                 </View>
               </View>
             </View>
           </>
-        )}
+        ) : null}
       </View>
 
-      {/* Lista de Containers */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>ACTIVE RUNTIME INSTANCES</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>ACTIVE RUNTIME INSTANCES</Text>
+          <Text style={styles.sectionHint}>
+            {filteredContainers.length} exibidos
+          </Text>
+        </View>
+
+        <ActionFeedbackBanner feedback={feedback} />
 
         {filteredContainers.length === 0 ? (
-          <Text style={styles.emptyText}>Nenhum container encontrado</Text>
+          <Text style={styles.emptyText}>Nenhum container encontrado.</Text>
         ) : (
-          filteredContainers.map((container) => (
-            <TouchableOpacity 
-              key={container.id} 
-              style={[
-                styles.card,
-                container.state === 'running' ? styles.cardRunning : styles.cardStopped
-              ]}
-              activeOpacity={1}
-              onPress={() => router.push(`/container/${container.id}`)}
-            >
-              <View style={styles.cardHeader}>
-                <View style={[
-                  styles.statusDot, 
-                  { backgroundColor: getContainerStatusColor(container.state) }
-                ]} />
-                <View>
-                  <Text style={styles.cardTitle}>
-                    {container.names[0]?.replace(/^\//, '') || 'Unnamed'}
-                  </Text>
-                  <Text style={styles.cardId}>ID: {container.id.substring(0, 12)}</Text>
+          filteredContainers.map((container) => {
+            const name =
+              container.names[0]?.replace(/^\//, "") || "Unnamed container";
+            const isPending = pendingContainerId === container.id;
+
+            return (
+              <TouchableOpacity
+                key={container.id}
+                style={[
+                  styles.card,
+                  container.state === "running"
+                    ? styles.cardRunning
+                    : styles.cardStopped,
+                ]}
+                activeOpacity={0.9}
+                onPress={() => router.push(`/container/${container.id}`)}
+              >
+                <View style={styles.cardHeader}>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      {
+                        backgroundColor: getContainerStatusColor(container.state),
+                      },
+                    ]}
+                  />
+
+                  <View style={styles.cardHeaderBody}>
+                    <Text style={styles.cardTitle}>{name}</Text>
+                    <Text style={styles.cardId}>
+                      ID {container.id.substring(0, 12)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.detailsBadge}>
+                    <Text style={styles.detailsBadgeText}>DETAILS</Text>
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.cardMetrics}>
-                <Text style={styles.cardMetric}>Image: {container.image}</Text>
-                <Text style={styles.cardMetric}>Status: {container.status}</Text>
-              </View>
+                <View style={styles.cardMetrics}>
+                  <Text style={styles.cardMetric}>Image: {container.image}</Text>
+                  <Text style={styles.cardMetric}>State: {container.status}</Text>
+                </View>
 
-              <View style={styles.cardActions}>
-                {container.state === 'running' ? (
-                  <>
-                    <TouchableOpacity 
+                <View style={styles.cardActions}>
+                  {container.state === "running" ? (
+                    <>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        disabled={pendingAction !== null}
+                        onPress={() =>
+                          confirmQuickAction(container.id, name, "restart")
+                        }
+                      >
+                        {isPending && pendingAction === "restart" ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={Colors.primary}
+                          />
+                        ) : (
+                          <RotateCw size={16} color={Colors.primary} />
+                        )}
+                        <Text style={styles.actionButtonText}>Restart</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        disabled={pendingAction !== null}
+                        onPress={() =>
+                          confirmQuickAction(container.id, name, "stop")
+                        }
+                      >
+                        {isPending && pendingAction === "stop" ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={Colors.error}
+                          />
+                        ) : (
+                          <Square size={16} color={Colors.error} />
+                        )}
+                        <Text style={styles.actionButtonText}>Stop</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <TouchableOpacity
                       style={styles.actionButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleContainerAction(container.id, 'restart');
-                      }}
+                      disabled={pendingAction !== null}
+                      onPress={() =>
+                        confirmQuickAction(container.id, name, "start")
+                      }
                     >
-                      <RotateCw size={16} color={Colors.primary} />
-                      <Text style={styles.actionButtonText}>Restart</Text>
+                      {isPending && pendingAction === "start" ? (
+                        <ActivityIndicator
+                          size="small"
+                          color={Colors.success}
+                        />
+                      ) : (
+                        <Play size={16} color={Colors.success} />
+                      )}
+                      <Text style={styles.actionButtonText}>Start</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={styles.actionButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleContainerAction(container.id, 'stop');
-                      }}
-                    >
-                      <Square size={16} color={Colors.error || '#ef4444'} />
-                      <Text style={styles.actionButtonText}>Stop</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleContainerAction(container.id, 'start');
-                    }}
-                  >
-                    <Play size={16} color={Colors.success || '#10b981'} />
-                    <Text style={styles.actionButtonText}>Start</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </TouchableOpacity>
-          ))
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })
         )}
       </View>
     </ScrollView>
@@ -330,8 +487,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: Colors.background,
   },
   loadingText: {
@@ -351,21 +508,21 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: "700",
     color: Colors.onSurface,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 10,
-    color: Colors.outline,
-    fontFamily: 'monospace',
+    color: Colors.textSubtle,
+    fontFamily: "monospace",
     letterSpacing: 1,
   },
   headerActions: {
-    position: 'absolute',
+    position: "absolute",
     top: 48,
     right: 16,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   headerButton: {
@@ -373,12 +530,12 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 8,
     backgroundColor: Colors.surfaceVariant,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.surfaceVariant,
     borderRadius: 8,
     paddingHorizontal: 12,
@@ -392,25 +549,37 @@ const styles = StyleSheet.create({
     color: Colors.onSurface,
     fontSize: 14,
   },
+  loadErrorCard: {
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(255, 180, 171, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 180, 171, 0.2)",
+  },
+  loadErrorText: {
+    color: Colors.error,
+    fontSize: 13,
+  },
   autoRefreshContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginTop: 8,
   },
   autoRefreshLabel: {
     fontSize: 12,
-    color: Colors.outline,
+    color: Colors.textMuted,
     flex: 1,
   },
   connectedDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.success || '#10b981',
+    backgroundColor: Colors.success,
   },
   statsGrid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
     marginTop: 12,
   },
@@ -422,23 +591,23 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 9,
-    color: Colors.outline,
-    fontFamily: 'monospace',
+    color: Colors.textSubtle,
+    fontFamily: "monospace",
     letterSpacing: 1,
     marginBottom: 8,
   },
   statValueContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    flexDirection: "row",
+    alignItems: "baseline",
   },
   statValue: {
     fontSize: 20,
-    fontWeight: 'bold',
-    fontFamily: 'monospace',
+    fontWeight: "700",
+    fontFamily: "monospace",
   },
   statUnit: {
     fontSize: 10,
-    color: Colors.outline,
+    color: Colors.textMuted,
     marginLeft: 2,
   },
   section: {
@@ -446,77 +615,100 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     gap: 12,
   },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   sectionTitle: {
     fontSize: 11,
-    color: Colors.outline,
-    fontFamily: 'monospace',
+    color: Colors.textSubtle,
+    fontFamily: "monospace",
     letterSpacing: 1.5,
-    marginBottom: 4,
+  },
+  sectionHint: {
+    color: Colors.textMuted,
+    fontSize: 12,
   },
   emptyText: {
-    textAlign: 'center',
-    color: Colors.outline,
+    textAlign: "center",
+    color: Colors.textMuted,
     fontSize: 14,
     marginTop: 24,
   },
   card: {
     backgroundColor: Colors.surfaceVariant,
-    borderRadius: 8,
+    borderRadius: 14,
     padding: 16,
     borderLeftWidth: 3,
+    gap: 14,
   },
   cardRunning: {
-    borderLeftColor: Colors.success || '#10b981',
+    borderLeftColor: Colors.success,
   },
   cardStopped: {
     borderLeftColor: Colors.outline,
   },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  cardHeaderBody: {
+    flex: 1,
   },
   statusDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 12,
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
     color: Colors.onSurface,
     marginBottom: 2,
   },
   cardId: {
     fontSize: 11,
-    color: Colors.outline,
-    fontFamily: 'monospace',
+    color: Colors.textSubtle,
+    fontFamily: "monospace",
+  },
+  detailsBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: Colors.surface,
+  },
+  detailsBadgeText: {
+    color: Colors.primary,
+    fontSize: 10,
+    fontFamily: "monospace",
+    letterSpacing: 1.1,
   },
   cardMetrics: {
     gap: 4,
-    marginBottom: 12,
   },
   cardMetric: {
     fontSize: 12,
-    color: Colors.outline,
+    color: Colors.textMuted,
   },
   cardActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 6,
+    borderRadius: 8,
     backgroundColor: Colors.surface,
   },
   actionButtonText: {
     fontSize: 12,
     color: Colors.onSurface,
-    fontWeight: '500',
+    fontWeight: "500",
   },
 });

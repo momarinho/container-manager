@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react-native";
 import { useAuth } from "../../contexts/AuthContext";
 import { LoginCredentials } from "../../types/auth.types";
+import { storageService } from "../../services/storage.service";
 
 const COLORS = {
   background: "#10141a",
@@ -72,6 +73,31 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [rememberServer, setRememberServer] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSavedServer = async () => {
+      try {
+        const savedServer = await storageService.getServer();
+
+        if (!isMounted || !savedServer) {
+          return;
+        }
+
+        setServerUrl(savedServer.url);
+        setServerName(savedServer.name);
+      } catch (error) {
+        console.error("Failed to load saved server:", error);
+      }
+    };
+
+    void loadSavedServer();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogin = async () => {
     if (!serverUrl) {

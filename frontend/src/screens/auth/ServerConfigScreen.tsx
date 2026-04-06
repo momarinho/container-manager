@@ -388,7 +388,7 @@ const styles = StyleSheet.create({
   heroSubtitle: {
     fontSize: 14,
     lineHeight: 20,
-    color: Colors.secondary,
+    color: Colors.textMuted,
   },
   liveBadge: {
     alignSelf: 'flex-start',
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.5,
-    color: Colors.outline,
+    color: Colors.textSubtle,
   },
   metricValue: {
     fontSize: 16,
@@ -452,7 +452,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
-    color: Colors.outline,
+    color: Colors.textSubtle,
   },
   formCard: {
     backgroundColor: Colors.surfaceLow,
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.5,
-    color: Colors.secondary,
+    color: Colors.textMuted,
   },
   inputWrapper: {
     backgroundColor: Colors.background,
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     lineHeight: 20,
-    color: Colors.secondary,
+    color: Colors.textMuted,
   },
   serverCard: {
     backgroundColor: Colors.surfaceLow,
@@ -602,12 +602,12 @@ const styles = StyleSheet.create({
   },
   serverUrl: {
     fontSize: 13,
-    color: Colors.secondary,
+    color: Colors.textMuted,
     fontFamily: monoFont,
   },
   serverMeta: {
     fontSize: 10,
-    color: Colors.outline,
+    color: Colors.textSubtle,
     letterSpacing: 1.2,
     fontFamily: monoFont,
   },

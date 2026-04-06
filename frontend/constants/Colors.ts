@@ -13,4 +13,7 @@ export const Colors = {
   outline: '#414752',
   onSurface: '#dfe2eb',
   secondary: '#c1c7d0',
+  textMuted: '#cfd6e0',
+  textSubtle: '#9aa6b8',
+  textPlaceholder: '#7f8a9a',
 };
