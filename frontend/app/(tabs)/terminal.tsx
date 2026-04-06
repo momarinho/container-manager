@@ -102,10 +102,7 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: Colors.tertiary,
-    shadowColor: Colors.tertiary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
+    boxShadow: '0px 0px 8px rgba(103, 223, 112, 0.8)',
     elevation: 4,
   },
   statusText: {
@@ -222,10 +219,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryContainer,
     padding: 14,
     borderRadius: 12,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
+    boxShadow: '0px 4px 15px rgba(162, 201, 255, 0.2)',
     elevation: 4,
   },
 });

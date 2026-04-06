@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Connection Test</h1>
+    <div id="status">Aguardando...</div>
+    <pre id="messages"></pre>
+    
+    <script>
+        const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJhbGljZSIsInVzZXJuYW1lIjoiYWxpY2UiLCJpYXQiOjE3NzU0OTQwMjcsImV4cCI6MTc3NTU4MDQyN30.j8YVFwr4aygn37ts9NkOLgoZL6tErsXX96s_mY2BiMo';
+        const wsUrl = `ws://localhost:3000/ws/stats?token=${token}`;
+        
+        const statusEl = document.getElementById('status');
+        const messagesEl = document.getElementById('messages');
+        
+        function log(msg) {
+            console.log(msg);
+            messagesEl.textContent += msg + '\n';
+        }
+        
+        log(`Tentando conectar em: ${wsUrl}`);
+        
+        const ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+            statusEl.textContent = '✅ CONECTADO';
+            statusEl.style.color = 'green';
+            log('✅ WebSocket conectado com sucesso!');
+        };
+        
+        ws.onmessage = (event) => {
+            log(`📨 Mensagem recebida: ${event.data}`);
+        };
+        
+        ws.onerror = (error) => {
+            statusEl.textContent = '❌ ERRO';
+            statusEl.style.color = 'red';
+            log(`❌ Erro: ${error}`);
+        };
+        
+        ws.onclose = (event) => {
+            statusEl.textContent = '🔌 DESCONECTADO';
+            statusEl.style.color = 'orange';
+            log(`🔌 Desconectado - Código: ${event.code}, Razão: ${event.reason}`);
+        };
+    </script>
+</body>
+</html>

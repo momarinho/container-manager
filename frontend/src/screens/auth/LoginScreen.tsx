@@ -13,7 +13,6 @@ import {
 } from "react-native";
 import {
   Lock,
-  Key,
   LogIn,
   Server,
   Check,
@@ -68,7 +67,7 @@ export default function LoginScreen() {
 
   const [serverUrl, setServerUrl] = useState("http://localhost:3000");
   const [serverName, setServerName] = useState("Local Server");
-  const [loginType, setLoginType] = useState<"password" | "token">("password");
+  const loginType: "password" | "token" = "password";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [apiToken, setApiToken] = useState("");
@@ -436,10 +435,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: "center",
     borderRadius: 4,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    boxShadow: "0px 4px 8px rgba(88, 166, 255, 0.1)",
     elevation: 4,
   },
   connectButtonDisabled: {
@@ -502,10 +498,7 @@ const styles = StyleSheet.create({
   },
   statusDotOnline: {
     backgroundColor: COLORS.tertiary,
-    shadowColor: COLORS.tertiary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
+    boxShadow: "0px 0px 8px rgba(103, 223, 112, 0.6)",
     elevation: 4,
   },
   statusDotPulse: {

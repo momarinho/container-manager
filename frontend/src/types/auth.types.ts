@@ -1,23 +1,7 @@
-export interface LoginCredentials {
-  username?: string;
-  password?: string;
-  apiToken?: string;
-}
+import type { AuthResponse, LoginCredentials } from '../../../shared/types/auth';
+import type { ServerConfig } from '../../../shared/types/server';
 
-export interface AuthResponse {
-  token: string;
-  user: {
-    id: string;
-    username: string;
-  };
-}
-
-export interface ServerConfig {
-  id: string;
-  name: string;
-  url: string;
-  isDefault: boolean;
-}
+export type { AuthResponse, LoginCredentials, ServerConfig };
 
 export interface AuthState {
   isAuthenticated: boolean;

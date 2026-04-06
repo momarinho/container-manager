@@ -1,8 +1,8 @@
-import axios from "axios";
+import axios, { isAxiosError } from "axios";
+import type { ApiSuccess } from "../../../shared/types/api";
 import {
   LoginCredentials,
   AuthResponse,
-  ServerConfig,
 } from "../types/auth.types";
 import { storageService } from "./storage.service";
 
@@ -26,11 +26,11 @@ class AuthService {
     // Configurar URL do servidor para este request
     loginClient.defaults.baseURL = `${serverUrl}/api`;
 
-    const response = await loginClient.post<AuthResponse>(
+    const response = await loginClient.post<ApiSuccess<AuthResponse>>(
       "/auth/login",
       credentials,
     );
-    return response.data;
+    return response.data.data;
   }
 
   /**
@@ -40,10 +40,10 @@ class AuthService {
     try {
       const authToken = token || (await storageService.getToken());
       loginClient.defaults.baseURL = `${serverUrl}/api`;
-      const response = await loginClient.get("/auth/validate", {
+      const response = await loginClient.get<ApiSuccess<{ valid: boolean }>>("/auth/validate", {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       });
-      return response.status === 200;
+      return response.status === 200 && response.data.data.valid === true;
     } catch {
       return false;
     }
@@ -60,7 +60,7 @@ class AuthService {
       await axios.get(`${normalizedUrl}/health`, { timeout: 5000 });
       return { success: true, message: "Conexão estabelecida com sucesso" };
     } catch (error) {
-      if (axios.isAxiosError(error)) {
+      if (isAxiosError(error)) {
         if (error.code === "ECONNREFUSED") {
           return { success: false, message: "Servidor não encontrado" };
         }

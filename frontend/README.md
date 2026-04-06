@@ -1,50 +1,58 @@
-# Welcome to your Expo app 👋
+# Container Manager Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Frontend Expo do projeto `container-manager`.
 
-## Get started
+## Requisitos
 
-1. Install dependencies
+- Node.js 20+
+- Backend rodando em `http://localhost:3000`
 
-   ```bash
-   npm install
-   ```
+## Setup
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### 1. Subir o backend
 
 ```bash
-npm run reset-project
+cd ../backend
+cp .env.example .env
+npm install
+npm run dev
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 2. Subir o frontend
 
-## Learn more
+```bash
+cd ../frontend
+npm install
+npm run web
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+Você também pode usar:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm run android
+npm run ios
+```
 
-## Join the community
+## Login local
 
-Join our community of developers creating universal apps.
+Credenciais seed do backend:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- username: `alice`
+- password: `password123`
+
+Se quiser autenticar por token, configure `API_TOKENS` no ambiente do backend.
+
+## Arquitetura atual
+
+- O servidor ativo e a lista de servidores ficam persistidos localmente no frontend
+- O backend expõe `auth`, `containers`, `system` e `websocket`
+- A aba de terminal ainda não está conectada a uma sessão real interativa
+
+## Scripts
+
+```bash
+npm run web
+npm run android
+npm run ios
+npm run lint
+```

@@ -53,30 +53,37 @@ export const storageService = {
   async saveToken(token: string): Promise<void> {
     if (useSecureStorage) {
       await SInfo.setItem(STORAGE_KEYS.TOKEN, token, SensitiveInfoOptions);
-    } else {
-      await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
     }
+
+    await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
   },
 
   // Recuperar token
   async getToken(): Promise<string | null> {
     if (useSecureStorage) {
       try {
-        return await SInfo.getItem(STORAGE_KEYS.TOKEN, SensitiveInfoOptions);
+        const secureToken = await SInfo.getItem(
+          STORAGE_KEYS.TOKEN,
+          SensitiveInfoOptions,
+        );
+
+        if (secureToken) {
+          return secureToken;
+        }
       } catch {
-        return null;
+        // fallback para AsyncStorage abaixo
       }
     }
+
     return AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
   },
 
   // Remover token
   async removeToken(): Promise<void> {
-    if (useSecureStorage) {
-      await SInfo.deleteItem(STORAGE_KEYS.TOKEN, SensitiveInfoOptions);
-    } else {
-      await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
-    }
+    await Promise.allSettled([
+      AsyncStorage.removeItem(STORAGE_KEYS.TOKEN),
+      SInfo.deleteItem(STORAGE_KEYS.TOKEN, SensitiveInfoOptions),
+    ]);
   },
 
   // Salvar configuração do servidor
@@ -132,10 +139,10 @@ export const storageService = {
   },
 
   async removeServers(): Promise<void> {
-    await AsyncStorage.multiRemove([
-      STORAGE_KEYS.SERVERS,
-      STORAGE_KEYS.SERVER,
-      STORAGE_KEYS.ACTIVE_SERVER_ID,
+    await Promise.all([
+      AsyncStorage.removeItem(STORAGE_KEYS.SERVERS),
+      AsyncStorage.removeItem(STORAGE_KEYS.SERVER),
+      AsyncStorage.removeItem(STORAGE_KEYS.ACTIVE_SERVER_ID),
     ]);
   },
 
@@ -155,7 +162,9 @@ export const storageService = {
 
   // Limpar apenas dados autenticados (logout)
   async clearAll(): Promise<void> {
-    await this.removeToken();
-    await this.removeUser();
+    await Promise.all([
+      this.removeToken(),
+      this.removeUser(),
+    ]);
   },
 };

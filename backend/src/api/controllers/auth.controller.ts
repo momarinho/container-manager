@@ -2,8 +2,10 @@ import { Request, Response } from 'express';
 import { authService } from '../../services/auth.service';
 import { logger } from '../../utils/logger';
 import { verifyJwt } from '../../utils/jwt.util';
+import { fail, ok } from '../../utils/http';
 import type { AuthRequest } from '../middleware/auth.middleware';
 import type { LoginRequest } from '../../types/auth.types';
+import type { LoginResponse } from '../../types/auth.types';
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -14,7 +16,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     if (!username && !apiToken) {
       logger.warn('Login failed: No credentials provided');
-      res.status(400).json({ error: 'Username/password or API token required' });
+      fail(res, 400, 'AUTH_CREDENTIALS_REQUIRED', 'Username/password or API token required');
       return;
     }
 
@@ -24,7 +26,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     if (!isValid) {
       logger.warn(`Failed login attempt for user: ${username}`);
-      res.status(401).json({ error: 'Invalid credentials' });
+      fail(res, 401, 'AUTH_INVALID_CREDENTIALS', 'Invalid credentials');
       return;
     }
 
@@ -32,7 +34,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const token = authService.generateToken(userId, username || 'api-user');
     const expiresIn = process.env.JWT_EXPIRES_IN || '24h';
 
-    const response = {
+    const response: LoginResponse = {
       token,
       expiresAt: Date.now() + parseExpiration(expiresIn),
       user: {
@@ -43,21 +45,21 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     logger.info(`Login successful for user: ${username}, Response: ${JSON.stringify(response)}`);
 
-    res.json(response);
+    ok(res, response);
   } catch (error) {
     logger.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    fail(res, 500, 'AUTH_LOGIN_FAILED', 'Login failed');
   }
 };
 
 export const verify = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    res.json({
+    ok(res, {
       valid: true,
       user: req.user,
     });
   } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
+    fail(res, 401, 'AUTH_TOKEN_INVALID', 'Invalid token');
   }
 };
 
@@ -77,7 +79,7 @@ export const validate = async (req: Request, res: Response): Promise<void> => {
 
     if (!token) {
       logger.warn('Validate failed: No token provided');
-      res.status(400).json({ valid: false, error: 'Token required' });
+      fail(res, 400, 'AUTH_TOKEN_REQUIRED', 'Token required');
       return;
     }
 
@@ -94,13 +96,10 @@ export const validate = async (req: Request, res: Response): Promise<void> => {
     };
 
     logger.info(`Validate successful: ${JSON.stringify(response)}`);
-    res.json(response);
+    ok(res, response);
   } catch (error) {
     logger.error('Validate error:', error);
-    res.json({
-      valid: false,
-      error: 'Invalid token',
-    });
+    fail(res, 401, 'AUTH_TOKEN_INVALID', 'Invalid token');
   }
 };
 

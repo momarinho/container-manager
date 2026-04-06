@@ -1,35 +1,47 @@
-import type { Response } from 'express';
-import { systemStatsService } from '../../services/systemStats.service';
-import { logger } from '../../utils/logger';
-import type { AuthRequest } from '../middleware/auth.middleware';
+import type { Response } from "express";
+import { systemStatsService } from "../../services/systemStats.service";
+import { fail, ok } from "../../utils/http";
+import { logger } from "../../utils/logger";
+import type { AuthRequest } from "../middleware/auth.middleware";
 
-export const getStats = async (_req: AuthRequest, res: Response): Promise<void> => {
+export const getStats = async (
+  _req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const stats = systemStatsService.getCurrentStats();
-    res.json({ stats });
+    ok(res, stats);
   } catch (error) {
-    logger.error('Failed to get system stats:', error);
-    res.status(500).json({ error: 'Failed to get system stats' });
+    logger.error("Failed to get system stats:", error);
+    fail(res, 500, "SYSTEM_STATS_FAILED", "Failed to get system stats");
   }
 };
 
-export const getStatsHistory = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getStatsHistory = async (
+  req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const limit = req.query.limit
+      ? parseInt(req.query.limit as string, 10)
+      : undefined;
     const history = systemStatsService.getHistory(limit);
-    res.json({ history });
+    ok(res, history);
   } catch (error) {
-    logger.error('Failed to get stats history:', error);
-    res.status(500).json({ error: 'Failed to get stats history' });
+    logger.error("Failed to get stats history:", error);
+    fail(res, 500, "SYSTEM_STATS_HISTORY_FAILED", "Failed to get stats history");
   }
 };
 
-export const getSystemInfo = async (_req: AuthRequest, res: Response): Promise<void> => {
+export const getSystemInfo = async (
+  _req: AuthRequest,
+  res: Response,
+): Promise<void> => {
   try {
     const info = await systemStatsService.getSystemInfo();
-    res.json({ info });
+    ok(res, info);
   } catch (error) {
-    logger.error('Failed to get system info:', error);
-    res.status(500).json({ error: 'Failed to get system info' });
+    logger.error("Failed to get system info:", error);
+    fail(res, 500, "SYSTEM_INFO_FAILED", "Failed to get system info");
   }
 };

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { fail } from '../../utils/http';
 import { verifyJwt } from '../../utils/jwt.util';
 
 export interface AuthRequest extends Request {
@@ -8,7 +9,10 @@ export interface AuthRequest extends Request {
 export function jwtMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   const header = req.header('Authorization') || '';
   const match = header.match(/^Bearer (.+)$/);
-  if (!match) return res.status(401).json({ error: 'Missing token' });
+  if (!match) {
+    fail(res, 401, 'AUTH_TOKEN_MISSING', 'Missing token');
+    return;
+  }
   const token = match[1];
   try {
     const payload = verifyJwt<{ userId: string; username: string }>(token);
@@ -16,7 +20,8 @@ export function jwtMiddleware(req: AuthRequest, res: Response, next: NextFunctio
     req.user = { id: payload.userId, username: payload.username };
     return next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    fail(res, 401, 'AUTH_TOKEN_INVALID', 'Invalid or expired token');
+    return;
   }
 }
 

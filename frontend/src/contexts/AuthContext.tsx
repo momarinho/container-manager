@@ -216,9 +216,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await authService.logout();
-    await storageService.clearAll();
-    dispatch({ type: "LOGOUT" });
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.error("Erro ao finalizar sessão no serviço de auth:", error);
+    } finally {
+      await storageService.clearAll();
+      dispatch({ type: "LOGOUT" });
+    }
   };
 
   const setServer = async (server: ServerConfig) => {

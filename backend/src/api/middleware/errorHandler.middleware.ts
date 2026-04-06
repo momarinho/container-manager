@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../../utils/logger';
 import { ZodError } from 'zod';
+import { fail } from '../../utils/http';
 
 export class AppError extends Error {
   public statusCode: number;
@@ -24,29 +25,24 @@ export const errorHandler = (
   logger.error('Error:', err);
 
   if (err instanceof ZodError) {
-    res.status(400).json({
-      error: 'Validation error',
-      details: err.errors,
-    });
+    fail(res, 400, 'VALIDATION_ERROR', 'Validation error', err.errors);
     return;
   }
 
   if (err instanceof AppError) {
-    res.status(err.statusCode).json({
-      error: err.message,
-    });
+    fail(res, err.statusCode, 'APP_ERROR', err.message);
     return;
   }
 
-  res.status(500).json({
-    error: 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { message: err.message }),
-  });
+  fail(
+    res,
+    500,
+    'INTERNAL_SERVER_ERROR',
+    'Internal server error',
+    process.env.NODE_ENV === 'development' ? { message: err.message } : undefined
+  );
 };
 
 export const notFoundHandler = (req: Request, res: Response): void => {
-  res.status(404).json({
-    error: 'Not found',
-    path: req.path,
-  });
+  fail(res, 404, 'NOT_FOUND', 'Not found', { path: req.path });
 };

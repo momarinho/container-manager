@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import { dockerService } from '../../services/docker.service';
 import { logger } from '../../utils/logger';
+import { fail, ok } from '../../utils/http';
 import type { AuthRequest } from '../middleware/auth.middleware';
 import { z } from 'zod';
 
@@ -11,11 +12,28 @@ const containerIdSchema = z.object({
 export const listContainers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const all = req.query.all === 'true';
-    const containers = await dockerService.listContainers(all);
-    res.json({ containers });
+    const { status, name } = req.query;
+    
+    let containers = await dockerService.listContainers(all);
+    
+    // Filtro por status
+    if (status && typeof status === 'string') {
+      containers = containers.filter((c) => c.state === status);
+    }
+    
+    // Filtro por nome (busca parcial, case-insensitive)
+    if (name && typeof name === 'string') {
+      const searchTerm = name.toLowerCase();
+      containers = containers.filter((c) =>
+        c.names.some((n) => n.toLowerCase().includes(searchTerm)) ||
+        c.image.toLowerCase().includes(searchTerm)
+      );
+    }
+    
+    ok(res, containers, { count: containers.length });
   } catch (error) {
     logger.error('Failed to list containers:', error);
-    res.status(500).json({ error: 'Failed to list containers' });
+    fail(res, 500, 'CONTAINERS_LIST_FAILED', 'Failed to list containers');
   }
 };
 
@@ -23,14 +41,14 @@ export const getContainer = async (req: AuthRequest, res: Response): Promise<voi
   try {
     const { id } = containerIdSchema.parse({ id: req.params.id });
     const container = await dockerService.getContainer(id);
-    res.json({ container });
+    ok(res, container);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to get container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to get container' });
+    fail(res, 500, 'CONTAINER_GET_FAILED', 'Failed to get container');
   }
 };
 
@@ -38,14 +56,14 @@ export const startContainer = async (req: AuthRequest, res: Response): Promise<v
   try {
     const { id } = containerIdSchema.parse({ id: req.params.id });
     await dockerService.startContainer(id);
-    res.json({ message: 'Container started', id });
+    ok(res, { id, message: 'Container started' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to start container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to start container' });
+    fail(res, 500, 'CONTAINER_START_FAILED', 'Failed to start container');
   }
 };
 
@@ -53,14 +71,14 @@ export const stopContainer = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const { id } = containerIdSchema.parse({ id: req.params.id });
     await dockerService.stopContainer(id);
-    res.json({ message: 'Container stopped', id });
+    ok(res, { id, message: 'Container stopped' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to stop container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to stop container' });
+    fail(res, 500, 'CONTAINER_STOP_FAILED', 'Failed to stop container');
   }
 };
 
@@ -68,14 +86,14 @@ export const restartContainer = async (req: AuthRequest, res: Response): Promise
   try {
     const { id } = containerIdSchema.parse({ id: req.params.id });
     await dockerService.restartContainer(id);
-    res.json({ message: 'Container restarted', id });
+    ok(res, { id, message: 'Container restarted' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to restart container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to restart container' });
+    fail(res, 500, 'CONTAINER_RESTART_FAILED', 'Failed to restart container');
   }
 };
 
@@ -83,14 +101,14 @@ export const pauseContainer = async (req: AuthRequest, res: Response): Promise<v
   try {
     const { id } = containerIdSchema.parse({ id: req.params.id });
     await dockerService.pauseContainer(id);
-    res.json({ message: 'Container paused', id });
+    ok(res, { id, message: 'Container paused' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to pause container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to pause container' });
+    fail(res, 500, 'CONTAINER_PAUSE_FAILED', 'Failed to pause container');
   }
 };
 
@@ -98,14 +116,14 @@ export const unpauseContainer = async (req: AuthRequest, res: Response): Promise
   try {
     const { id } = containerIdSchema.parse({ id: req.params.id });
     await dockerService.unpauseContainer(id);
-    res.json({ message: 'Container unpaused', id });
+    ok(res, { id, message: 'Container unpaused' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to unpause container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to unpause container' });
+    fail(res, 500, 'CONTAINER_UNPAUSE_FAILED', 'Failed to unpause container');
   }
 };
 
@@ -114,14 +132,14 @@ export const removeContainer = async (req: AuthRequest, res: Response): Promise<
     const { id } = containerIdSchema.parse({ id: req.params.id });
     const force = req.query.force === 'true';
     await dockerService.removeContainer(id, force);
-    res.json({ message: 'Container removed', id });
+    ok(res, { id, message: 'Container removed' });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to remove container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to remove container' });
+    fail(res, 500, 'CONTAINER_REMOVE_FAILED', 'Failed to remove container');
   }
 };
 
@@ -129,14 +147,14 @@ export const getContainerStats = async (req: AuthRequest, res: Response): Promis
   try {
     const { id } = containerIdSchema.parse({ id: req.params.id });
     const stats = await dockerService.getContainerStats(id);
-    res.json({ stats });
+    ok(res, stats);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to get stats for container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to get container stats' });
+    fail(res, 500, 'CONTAINER_STATS_FAILED', 'Failed to get container stats');
   }
 };
 
@@ -146,18 +164,18 @@ export const execInContainer = async (req: AuthRequest, res: Response): Promise<
     const { cmd, env } = req.body;
 
     if (!cmd || !Array.isArray(cmd)) {
-      res.status(400).json({ error: 'cmd is required and must be an array' });
+      fail(res, 400, 'INVALID_EXEC_COMMAND', 'cmd is required and must be an array');
       return;
     }
 
     const result = await dockerService.execInContainer(id, cmd, env || {});
-    res.json({ ...result });
+    ok(res, result);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: 'Invalid container ID', details: error.errors });
+      fail(res, 400, 'INVALID_CONTAINER_ID', 'Invalid container ID', error.errors);
       return;
     }
     logger.error(`Failed to exec in container ${req.params.id}:`, error);
-    res.status(500).json({ error: 'Failed to execute command' });
+    fail(res, 500, 'CONTAINER_EXEC_FAILED', 'Failed to execute command');
   }
 };

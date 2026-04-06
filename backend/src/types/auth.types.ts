@@ -1,17 +1,7 @@
-export interface LoginRequest {
-  username?: string;
-  password?: string;
-  apiToken?: string;
-}
+import type { AuthResponse, LoginCredentials } from '../../../shared/types/auth';
 
-export interface LoginResponse {
-  token: string;
-  expiresAt: number;
-  user?: {
-    id: string;
-    username: string;
-  };
-}
+export type LoginRequest = LoginCredentials;
+export type LoginResponse = AuthResponse;
 
 export interface JWTPayload {
   userId: string;

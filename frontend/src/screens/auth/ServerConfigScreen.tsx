@@ -8,11 +8,15 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Server, Plus, Trash2, Check, Pencil } from 'lucide-react-native';
+import { Colors } from '../../../constants/Colors';
 import { useAuth } from '../../contexts/AuthContext';
 import { ServerConfig } from '../../types/auth.types';
 import { authService } from '../../services/auth.service';
+
+const monoFont = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
 export default function ServerConfigScreen() {
   const { server: currentServer, setServer, servers, setServers, clearActiveServer } = useAuth();
@@ -20,6 +24,8 @@ export default function ServerConfigScreen() {
   const [newServerName, setNewServerName] = useState('');
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+
+  const activeServerLabel = currentServer?.name ?? 'NO_ACTIVE_NODE';
 
   const resetForm = () => {
     setNewServerUrl('');
@@ -125,116 +131,194 @@ export default function ServerConfigScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.header}>
-        <Server size={32} color="#6366f1" />
-        <Text style={styles.title}>Configuração de Servidores</Text>
-        <Text style={styles.subtitle}>Gerencie suas conexões Docker</Text>
-      </View>
-
-      {/* Adicionar Novo Servidor */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          {editingServerId ? 'Editar Servidor' : 'Adicionar Servidor'}
-        </Text>
-
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Nome (ex: Produção, Staging)"
-            placeholderTextColor="#64748b"
-            value={newServerName}
-            onChangeText={setNewServerName}
-          />
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.headerEyebrow}>NODE_REGISTRY</Text>
+          <View style={styles.headerLine} />
         </View>
 
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="URL (ex: https://docker.example.com)"
-            placeholderTextColor="#64748b"
-            value={newServerUrl}
-            onChangeText={setNewServerUrl}
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-        </View>
-
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[styles.button, styles.testButton]}
-            onPress={handleSaveServer}
-            disabled={testing}
-          >
-            {testing ? (
-              <ActivityIndicator color="#6366f1" />
-            ) : (
-              <>
-                <Check size={16} color="#6366f1" />
-                <Text style={styles.testButtonText}>
-                  {editingServerId ? 'Salvar alterações' : 'Testar e salvar'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.button, styles.addButton]}
-            onPress={resetForm}
-          >
-            <Plus size={16} color="#fff" />
-            <Text style={styles.addButtonText}>Novo</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Lista de Servidores */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Servidores Configurados</Text>
-
-        {servers.length === 0 ? (
-          <Text style={styles.emptyText}>Nenhum servidor configurado</Text>
-        ) : (
-          servers.map((server) => (
-            <View
-              key={server.id}
-              style={[
-                styles.serverCard,
-                currentServer?.id === server.id && styles.serverCardActive,
-              ]}
-            >
-              <View style={styles.serverInfo}>
-                <View style={styles.serverHeader}>
-                  <Text style={styles.serverName}>{server.name}</Text>
-                  {currentServer?.id === server.id && (
-                    <Text style={styles.activeBadge}>Ativo</Text>
-                  )}
-                </View>
-                <Text style={styles.serverUrl}>{server.url}</Text>
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroTitleRow}>
+              <View style={styles.heroIconBox}>
+                <Server size={22} color={Colors.primary} />
               </View>
-
-              <View style={styles.serverActions}>
-                {currentServer?.id !== server.id && (
-                  <TouchableOpacity
-                    style={styles.selectButton}
-                    onPress={() => handleSelectServer(server)}
-                  >
-                    <Check size={16} color="#6366f1" />
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.editButton} onPress={() => handleEditServer(server)}>
-                  <Pencil size={16} color="#f59e0b" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleRemoveServer(server)}
-                >
-                  <Trash2 size={16} color="#ef4444" />
-                </TouchableOpacity>
+              <View style={styles.heroCopy}>
+                <Text style={styles.heroTitle}>Servers</Text>
+                <Text style={styles.heroSubtitle}>
+                  Gerencie endpoints Docker no mesmo idioma visual do restante do app.
+                </Text>
               </View>
             </View>
-          ))
-        )}
+
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveBadgeText}>{currentServer ? 'ACTIVE' : 'STANDBY'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.metricsRow}>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricLabel}>ACTIVE_NODE</Text>
+              <Text style={styles.metricValue}>{activeServerLabel}</Text>
+            </View>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricLabel}>TOTAL_ENDPOINTS</Text>
+              <Text style={styles.metricValue}>{String(servers.length).padStart(2, '0')}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>
+            {editingServerId ? 'UPDATE_ENDPOINT' : 'REGISTER_ENDPOINT'}
+          </Text>
+          {editingServerId ? <Text style={styles.sectionHint}>EDIT_MODE</Text> : null}
+        </View>
+
+        <View style={styles.formCard}>
+          <View style={styles.fieldBlock}>
+            <Text style={styles.fieldLabel}>DISPLAY_NAME</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="Produção, staging, lab"
+                placeholderTextColor="rgba(65, 71, 82, 0.8)"
+                value={newServerName}
+                onChangeText={setNewServerName}
+              />
+            </View>
+          </View>
+
+          <View style={styles.fieldBlock}>
+            <Text style={styles.fieldLabel}>SERVER_URL</Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={styles.input}
+                placeholder="https://docker.example.com"
+                placeholderTextColor="rgba(65, 71, 82, 0.8)"
+                value={newServerUrl}
+                onChangeText={setNewServerUrl}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+            </View>
+          </View>
+
+          <View style={styles.formActions}>
+            <TouchableOpacity
+              style={[styles.primaryButton, testing && styles.primaryButtonDisabled]}
+              onPress={handleSaveServer}
+              disabled={testing}
+            >
+              {testing ? (
+                <ActivityIndicator color={Colors.background} />
+              ) : (
+                <>
+                  <Check size={16} color={Colors.background} />
+                  <Text style={styles.primaryButtonText}>
+                    {editingServerId ? 'Salvar alterações' : 'Testar e salvar'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.secondaryButton} onPress={resetForm}>
+              <Plus size={16} color={Colors.primary} />
+              <Text style={styles.secondaryButtonText}>
+                {editingServerId ? 'Limpar edição' : 'Novo'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>KNOWN_ENDPOINTS</Text>
+          <Text style={styles.sectionHint}>{servers.length} registrados</Text>
+        </View>
+
+        <View style={styles.listContainer}>
+          {servers.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>Nenhum servidor configurado</Text>
+              <Text style={styles.emptyText}>
+                Adicione um endpoint acima para começar a alternar entre ambientes.
+              </Text>
+            </View>
+          ) : (
+            servers.map((server) => {
+              const isActive = currentServer?.id === server.id;
+
+              return (
+                <View
+                  key={server.id}
+                  style={[styles.serverCard, isActive && styles.serverCardActive]}
+                >
+                  <View style={[styles.serverAccent, isActive && styles.serverAccentActive]} />
+
+                  <View style={styles.serverBody}>
+                    <View style={styles.serverMain}>
+                      <View style={styles.serverIconBox}>
+                        <Server size={20} color={isActive ? Colors.primary : Colors.secondary} />
+                      </View>
+
+                      <View style={styles.serverInfo}>
+                        <View style={styles.serverTitleRow}>
+                          <Text style={styles.serverName}>{server.name}</Text>
+                          {isActive ? (
+                            <View style={styles.activeBadge}>
+                              <View style={styles.activeBadgeDot} />
+                              <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <Text style={styles.serverUrl}>{server.url}</Text>
+                        <Text style={styles.serverMeta}>
+                          NODE_ID {server.id.slice(-6).toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.serverActions}>
+                      {!isActive ? (
+                        <TouchableOpacity
+                          style={styles.actionButton}
+                          onPress={() => handleSelectServer(server)}
+                        >
+                          <Check size={16} color={Colors.tertiary} />
+                        </TouchableOpacity>
+                      ) : null}
+
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => handleEditServer(server)}
+                      >
+                        <Pencil size={16} color={Colors.warning} />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => handleRemoveServer(server)}
+                      >
+                        <Trash2 size={16} color={Colors.error} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
       </View>
     </ScrollView>
   );
@@ -243,146 +327,299 @@ export default function ServerConfigScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: Colors.background,
   },
   content: {
-    padding: 24,
+    paddingTop: 48,
+    paddingHorizontal: 24,
     paddingBottom: 40,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: 28,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#f8fafc',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#94a3b8',
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748b',
-    marginBottom: 16,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  inputContainer: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    gap: 8,
     marginBottom: 12,
   },
-  input: {
-    color: '#f8fafc',
-    fontSize: 16,
+  headerEyebrow: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: Colors.primary,
   },
-  buttonRow: {
+  headerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(65, 71, 82, 0.2)',
+  },
+  heroCard: {
+    backgroundColor: Colors.surfaceLow,
+    padding: 20,
+    gap: 18,
+  },
+  heroTopRow: {
+    gap: 16,
+  },
+  heroTitleRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  heroIconBox: {
+    width: 52,
+    height: 52,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: 'rgba(65, 71, 82, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  heroTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: Colors.onSurface,
+  },
+  heroSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.secondary,
+  },
+  liveBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(103, 223, 112, 0.08)',
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.tertiary,
+  },
+  liveBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    color: Colors.tertiary,
+  },
+  metricsRow: {
     gap: 12,
   },
-  button: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
+  metricCard: {
+    backgroundColor: Colors.background,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(65, 71, 82, 0.1)',
+    gap: 6,
   },
-  testButton: {
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+  metricLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    color: Colors.outline,
   },
-  testButtonText: {
-    color: '#6366f1',
-    fontWeight: '600',
+  metricValue: {
+    fontSize: 16,
+    color: Colors.onSurface,
+    fontFamily: monoFont,
   },
-  addButton: {
-    backgroundColor: '#6366f1',
+  section: {
+    marginBottom: 28,
+    gap: 14,
   },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  editButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: '#64748b',
-    textAlign: 'center',
-    paddingVertical: 24,
-  },
-  serverCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: '#64748b',
-  },
-  serverCardActive: {
-    borderLeftColor: '#6366f1',
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-  },
-  serverInfo: {
-    marginBottom: 12,
-  },
-  serverHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: Colors.primary,
+  },
+  sectionHint: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    color: Colors.outline,
+  },
+  formCard: {
+    backgroundColor: Colors.surfaceLow,
+    padding: 20,
+    gap: 18,
+  },
+  fieldBlock: {
+    gap: 8,
+  },
+  fieldLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    color: Colors.secondary,
+  },
+  inputWrapper: {
+    backgroundColor: Colors.background,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    paddingHorizontal: 16,
+  },
+  input: {
+    height: 54,
+    color: Colors.onSurface,
+    fontSize: 15,
+  },
+  formActions: {
+    gap: 12,
+  },
+  primaryButton: {
+    minHeight: 50,
+    backgroundColor: Colors.primaryContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.7,
+  },
+  primaryButtonText: {
+    color: Colors.background,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  secondaryButton: {
+    minHeight: 50,
+    backgroundColor: Colors.surfaceHigh,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  secondaryButtonText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  listContainer: {
+    gap: 12,
+  },
+  emptyCard: {
+    backgroundColor: Colors.surfaceLow,
+    padding: 20,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.onSurface,
+  },
+  emptyText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.secondary,
+  },
+  serverCard: {
+    backgroundColor: Colors.surfaceLow,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  serverCardActive: {
+    backgroundColor: Colors.surfaceHigh,
+  },
+  serverAccent: {
+    width: 4,
+    backgroundColor: Colors.outline,
+  },
+  serverAccentActive: {
+    backgroundColor: Colors.primaryContainer,
+  },
+  serverBody: {
+    flex: 1,
+    padding: 18,
+    gap: 16,
+  },
+  serverMain: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  serverIconBox: {
+    width: 44,
+    height: 44,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: 'rgba(65, 71, 82, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  serverInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  serverTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   serverName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#f8fafc',
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.onSurface,
   },
   activeBadge: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#6366f1',
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(88, 166, 255, 0.12)',
+  },
+  activeBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+  },
+  activeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    color: Colors.primary,
   },
   serverUrl: {
-    fontSize: 12,
-    color: '#94a3b8',
+    fontSize: 13,
+    color: Colors.secondary,
+    fontFamily: monoFont,
+  },
+  serverMeta: {
+    fontSize: 10,
+    color: Colors.outline,
+    letterSpacing: 1.2,
+    fontFamily: monoFont,
   },
   serverActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 8,
+    gap: 10,
   },
-  selectButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  actionButton: {
+    width: 38,
+    height: 38,
+    backgroundColor: Colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },

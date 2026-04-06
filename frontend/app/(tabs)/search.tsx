@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity } from 'react-native';
-import { Search as SearchIcon, Server, FileText, Layers, Network, ExternalLink, Terminal } from 'lucide-react-native';
+import { Search as SearchIcon, Server, Layers, ExternalLink, Terminal } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 
 export default function SearchScreen() {
@@ -54,7 +54,7 @@ export default function SearchScreen() {
                 </View>
                 <View>
                   <Text style={styles.title}>
-                    redis logs <Text style={{ color: Colors.error }}>"error"</Text>
+                    redis logs <Text style={{ color: Colors.error }}>{'"'}error{'"'}</Text>
                   </Text>
                   <Text style={styles.subtitle}>3 matches found in standard output</Text>
                 </View>
