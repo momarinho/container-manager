@@ -1,6 +1,6 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '../../../shared/types/api';
-import type { Container, ContainerStats } from '../types/container.types';
+import type { Container, ContainerDetails, ContainerStats } from '../types/container.types';
 
 export const containersService = {
   /**
@@ -21,8 +21,8 @@ export const containersService = {
   /**
    * Obtém detalhes de um container específico
    */
-  async get(id: string): Promise<Container> {
-    const response = await apiClient.get<ApiSuccess<Container>>(`/containers/${id}`);
+  async get(id: string): Promise<ContainerDetails> {
+    const response = await apiClient.get<ApiSuccess<ContainerDetails>>(`/containers/${id}`);
     return response.data.data;
   },
 

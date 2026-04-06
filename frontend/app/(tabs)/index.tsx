@@ -255,6 +255,7 @@ export default function DashboardScreen() {
                 container.state === 'running' ? styles.cardRunning : styles.cardStopped
               ]}
               activeOpacity={1}
+              onPress={() => router.push(`/container/${container.id}`)}
             >
               <View style={styles.cardHeader}>
                 <View style={[
