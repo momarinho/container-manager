@@ -11,9 +11,9 @@ export function jwtMiddleware(req: AuthRequest, res: Response, next: NextFunctio
   if (!match) return res.status(401).json({ error: 'Missing token' });
   const token = match[1];
   try {
-    const payload = verifyJwt(token);
+    const payload = verifyJwt<{ userId: string; username: string }>(token);
     // payload expected to contain userId, username
-    req.user = { id: (payload as any).userId, username: (payload as any).username };
+    req.user = { id: payload.userId, username: payload.username };
     return next();
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });

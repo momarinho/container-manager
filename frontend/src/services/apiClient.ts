@@ -23,7 +23,7 @@ apiClient.interceptors.request.use(
 
     // Atualizar baseURL se tiver configuração de servidor
     const server = await storageService.getServer();
-    if (server && config.baseURL) {
+    if (server) {
       config.baseURL = `${server.url}/api`;
     }
 

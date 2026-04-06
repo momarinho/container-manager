@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Database, Search, Terminal } from 'lucide-react-native';
+import { Database, Search, Terminal, Server } from 'lucide-react-native';
 import { Colors } from '../../constants/Colors';
 
 export default function TabLayout() {
@@ -33,6 +33,13 @@ export default function TabLayout() {
         options={{
           title: 'Terminal',
           tabBarIcon: ({ color }) => <Terminal size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="servers"
+        options={{
+          title: 'Servers',
+          tabBarIcon: ({ color }) => <Server size={24} color={color} />,
         }}
       />
     </Tabs>

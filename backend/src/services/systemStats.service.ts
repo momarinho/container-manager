@@ -45,7 +45,7 @@ export class SystemStatsService {
           total: containers.length,
         },
         loadAvg: cpu.cpus.map((c) => Math.round(c.load * 100) / 100),
-        uptime: process.uptime(),
+        uptime: (process as any).uptime(),
       };
 
       this.history.push(stats);

@@ -9,6 +9,7 @@ import { rateLimitMiddleware } from './api/middleware/rateLimit.middleware';
 import { errorHandler, notFoundHandler } from './api/middleware/errorHandler.middleware';
 import authRoutes from './api/routes/auth.routes';
 import containersRoutes from './api/routes/containers.routes';
+import serverRoutes from './api/routes/server.routes';
 import systemRoutes from './api/routes/system.routes';
 
 const app = express();
@@ -34,13 +35,14 @@ app.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: (process as any).uptime(),
   });
 });
 
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/containers', containersRoutes);
+app.use('/api/servers', serverRoutes);
 app.use('/api/system', systemRoutes);
 
 // 404 handler

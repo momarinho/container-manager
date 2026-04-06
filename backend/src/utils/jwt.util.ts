@@ -9,5 +9,9 @@ export function signJwt(payload: object): string {
 }
 
 export function verifyJwt<T = any>(token: string): T {
-  return jwt.verify(token, SECRET) as T;
+  try {
+    return jwt.verify(token, SECRET) as T;
+  } catch (error) {
+    throw new Error('Invalid token');
+  }
 }

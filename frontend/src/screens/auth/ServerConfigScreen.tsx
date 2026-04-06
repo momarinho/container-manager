@@ -9,59 +9,114 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import { Server, Plus, Trash2, Check } from 'lucide-react-native';
+import { Server, Plus, Trash2, Check, Pencil } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { ServerConfig } from '../../types/auth.types';
 import { authService } from '../../services/auth.service';
 
 export default function ServerConfigScreen() {
-  const { server: currentServer, setServer } = useAuth();
-  const [servers, setServers] = useState<ServerConfig[]>([currentServer].filter(Boolean) as ServerConfig[]);
+  const { server: currentServer, setServer, servers, setServers, clearActiveServer } = useAuth();
   const [newServerUrl, setNewServerUrl] = useState('');
   const [newServerName, setNewServerName] = useState('');
+  const [editingServerId, setEditingServerId] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
-  const handleTestConnection = async () => {
-    if (!newServerUrl) {
-      Alert.alert('Erro', 'Informe a URL do servidor');
-      return;
-    }
-
-    setTesting(true);
-    try {
-      const result = await authService.testConnection(newServerUrl);
-      if (result.success) {
-        Alert.alert('Sucesso', result.message);
-      } else {
-        Alert.alert('Erro', result.message);
-      }
-    } catch (error: any) {
-      Alert.alert('Erro', error.message || 'Não foi possível testar a conexão');
-    } finally {
-      setTesting(false);
-    }
+  const resetForm = () => {
+    setNewServerUrl('');
+    setNewServerName('');
+    setEditingServerId(null);
   };
 
-  const handleAddServer = () => {
+  const handleSaveServer = async () => {
     if (!newServerUrl || !newServerName) {
       Alert.alert('Erro', 'Preencha todos os campos');
       return;
     }
 
-    const newServer: ServerConfig = {
-      id: Date.now().toString(),
-      name: newServerName,
-      url: newServerUrl,
-      isDefault: false,
-    };
+    setTesting(true);
 
-    setServers([...servers, newServer]);
-    setNewServerUrl('');
-    setNewServerName('');
+    try {
+      const result = await authService.testConnection(newServerUrl);
+
+      if (!result.success) {
+        Alert.alert('Erro', result.message);
+        return;
+      }
+
+      const normalizedUrl = newServerUrl.trim().replace(/\/$/, '');
+
+      const nextServers = editingServerId
+        ? servers.map((server) =>
+            server.id === editingServerId
+              ? { ...server, name: newServerName, url: normalizedUrl }
+              : server
+          )
+        : [
+            ...servers,
+            {
+              id: Date.now().toString(),
+              name: newServerName,
+              url: normalizedUrl,
+              isDefault: servers.length === 0,
+            },
+          ];
+
+      await setServers(nextServers);
+
+      const savedServer =
+        nextServers.find((server) => server.id === editingServerId) ??
+        nextServers[nextServers.length - 1];
+
+      const shouldSelectServer =
+        (!editingServerId && savedServer) ||
+        (editingServerId && currentServer?.id === editingServerId && savedServer);
+
+      if (savedServer && shouldSelectServer) {
+        await setServer(savedServer);
+      }
+
+      Alert.alert(
+        'Sucesso',
+        editingServerId ? 'Servidor atualizado com sucesso' : 'Servidor adicionado com sucesso'
+      );
+      resetForm();
+    } catch (error: any) {
+      Alert.alert('Erro', error.message || 'Não foi possível salvar o servidor');
+    } finally {
+      setTesting(false);
+    }
   };
 
-  const handleRemoveServer = (id: string) => {
-    setServers(servers.filter(s => s.id !== id));
+  const handleEditServer = (server: ServerConfig) => {
+    setEditingServerId(server.id);
+    setNewServerName(server.name);
+    setNewServerUrl(server.url);
+  };
+
+  const handleRemoveServer = (server: ServerConfig) => {
+    Alert.alert(
+      'Remover servidor',
+      `Deseja remover "${server.name}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: async () => {
+            const nextServers = servers.filter((item) => item.id !== server.id);
+            await setServers(nextServers);
+
+            if (currentServer?.id === server.id) {
+              if (nextServers.length > 0) {
+                await setServer(nextServers[0]);
+              } else {
+                await clearActiveServer();
+              }
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleSelectServer = async (server: ServerConfig) => {
@@ -79,7 +134,9 @@ export default function ServerConfigScreen() {
 
       {/* Adicionar Novo Servidor */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Adicionar Servidor</Text>
+        <Text style={styles.sectionTitle}>
+          {editingServerId ? 'Editar Servidor' : 'Adicionar Servidor'}
+        </Text>
 
         <View style={styles.inputContainer}>
           <TextInput
@@ -106,7 +163,7 @@ export default function ServerConfigScreen() {
         <View style={styles.buttonRow}>
           <TouchableOpacity
             style={[styles.button, styles.testButton]}
-            onPress={handleTestConnection}
+            onPress={handleSaveServer}
             disabled={testing}
           >
             {testing ? (
@@ -114,17 +171,19 @@ export default function ServerConfigScreen() {
             ) : (
               <>
                 <Check size={16} color="#6366f1" />
-                <Text style={styles.testButtonText}>Testar</Text>
+                <Text style={styles.testButtonText}>
+                  {editingServerId ? 'Salvar alterações' : 'Testar e salvar'}
+                </Text>
               </>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.button, styles.addButton]}
-            onPress={handleAddServer}
+            onPress={resetForm}
           >
             <Plus size={16} color="#fff" />
-            <Text style={styles.addButtonText}>Adicionar</Text>
+            <Text style={styles.addButtonText}>Novo</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -163,9 +222,12 @@ export default function ServerConfigScreen() {
                     <Check size={16} color="#6366f1" />
                   </TouchableOpacity>
                 )}
+                <TouchableOpacity style={styles.editButton} onPress={() => handleEditServer(server)}>
+                  <Pencil size={16} color="#f59e0b" />
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.deleteButton}
-                  onPress={() => handleRemoveServer(server.id)}
+                  onPress={() => handleRemoveServer(server)}
                 >
                   <Trash2 size={16} color="#ef4444" />
                 </TouchableOpacity>
@@ -250,6 +312,14 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  editButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyText: {
     color: '#64748b',
