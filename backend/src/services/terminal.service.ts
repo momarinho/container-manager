@@ -1,22 +1,46 @@
-import * as pty from 'node-pty';
+import type { IPty } from 'node-pty';
 import { logger } from '../utils/logger';
 import { config } from '../utils/config';
 
 export interface TerminalSession {
   id: string;
   containerId: string;
-  pty: pty.IPty;
+  pty: IPty;
   lastActivity: number;
 }
 
 export class TerminalService {
   private sessions: Map<string, TerminalSession>;
   private idleCheckInterval: NodeJS.Timeout;
+  private nodePty: typeof import('node-pty') | null = null;
+  private nodePtyLoadError: Error | null = null;
 
   constructor() {
     this.sessions = new Map();
     this.idleCheckInterval = setInterval(() => this.checkIdleSessions(), 60000);
     logger.info('Terminal service initialized');
+  }
+
+  private getNodePty(): typeof import('node-pty') {
+    if (this.nodePty) {
+      return this.nodePty;
+    }
+
+    if (this.nodePtyLoadError) {
+      throw this.nodePtyLoadError;
+    }
+
+    try {
+      this.nodePty = require('node-pty') as typeof import('node-pty');
+      return this.nodePty;
+    } catch (error) {
+      this.nodePtyLoadError =
+        error instanceof Error ? error : new Error('Failed to load node-pty');
+      logger.warn('Terminal support unavailable: failed to load node-pty', {
+        error: this.nodePtyLoadError.message,
+      });
+      throw this.nodePtyLoadError;
+    }
   }
 
   async createSession(
@@ -29,10 +53,11 @@ export class TerminalService {
       throw new Error('Maximum terminal sessions reached');
     }
 
+    const nodePty = this.getNodePty();
     const sessionId = `${containerId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     try {
-      const ptyProcess = pty.spawn('docker', ['exec', '-it', containerId, shell], {
+      const ptyProcess = nodePty.spawn('docker', ['exec', '-it', containerId, shell], {
         name: 'xterm-256color',
         cols,
         rows,

@@ -4,6 +4,7 @@ import { z } from 'zod';
 dotenv.config();
 
 const envSchema = z.object({
+  HOST: z.string().default('0.0.0.0'),
   PORT: z.string().default('3000').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
@@ -42,6 +43,7 @@ if (!parsedEnv.success) {
 }
 
 export const config = {
+  host: parsedEnv.data.HOST,
   port: parsedEnv.data.PORT,
   nodeEnv: parsedEnv.data.NODE_ENV,
   logLevel: parsedEnv.data.LOG_LEVEL,

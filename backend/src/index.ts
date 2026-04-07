@@ -56,17 +56,20 @@ app.use(errorHandler);
 // WebSocket handler (initialized for side effects)
 void new WebSocketHandler(server);
 
+const publicHost = config.host === "0.0.0.0" ? "localhost" : config.host;
+
 // Start server
-server.listen(config.port, () => {
+server.listen(config.port, config.host, () => {
   logger.info(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
 ║              ContainerMaster Backend Agent                   ║
 ║                                                               ║
+║  Host:         ${config.host.padEnd(20)}║
 ║  Environment:  ${config.nodeEnv.padEnd(20)}║
 ║  Port:         ${config.port.toString().padEnd(20)}║
-║  API:          http://localhost:${config.port}/api           ║
-║  WebSocket:    ws://localhost:${config.port}/ws              ║
+║  API:          http://${publicHost}:${config.port}/api       ║
+║  WebSocket:    ws://${publicHost}:${config.port}/ws          ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
   `);
@@ -74,6 +77,7 @@ server.listen(config.port, () => {
   if (isDevelopment) {
     logger.info(`
 Development mode:
+  - HOST: ${config.host}
   - JWT_SECRET: ${config.jwt.secret}
   - CORS_ORIGIN: ${config.cors.origin}
     `);
