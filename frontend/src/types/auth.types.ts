@@ -28,6 +28,7 @@ export type AuthAction =
     }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_SERVER"; payload: ServerConfig }
+  | { type: "SWITCH_SERVER"; payload: ServerConfig }
   | { type: "SET_SERVERS"; payload: ServerConfig[] }
   | { type: "SET_ACTIVE_SERVER_ID"; payload: string | null }
   | { type: "CLEAR_ACTIVE_SERVER" };

@@ -53,13 +53,12 @@ app.use(notFoundHandler);
 // Error handler
 app.use(errorHandler);
 
-// WebSocket handler (initialized for side effects)
-void new WebSocketHandler(server);
-
 const publicHost = config.host === "0.0.0.0" ? "localhost" : config.host;
 
 // Start server
 server.listen(config.port, config.host, () => {
+  // Initialize WebSocket handler after server is listening
+  void new WebSocketHandler(server);
   logger.info(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║

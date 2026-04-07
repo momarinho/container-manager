@@ -126,7 +126,20 @@ export default function ServerConfigScreen() {
   };
 
   const handleSelectServer = async (server: ServerConfig) => {
+    const requiresReauth =
+      !!currentServer &&
+      (currentServer.id !== server.id || currentServer.url !== server.url);
+
     await setServer(server);
+
+    if (requiresReauth) {
+      Alert.alert(
+        'Servidor atualizado',
+        `Endpoint alterado para ${server.name}. Faça login novamente para renovar a sessão.`
+      );
+      return;
+    }
+
     Alert.alert('Servidor atualizado', `Conectado a ${server.name}`);
   };
 

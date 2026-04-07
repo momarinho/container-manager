@@ -53,6 +53,16 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
         server: action.payload,
         activeServerId: action.payload.id,
       };
+    case "SWITCH_SERVER":
+      return {
+        ...state,
+        isAuthenticated: false,
+        token: null,
+        user: null,
+        server: action.payload,
+        activeServerId: action.payload.id,
+        isLoading: false,
+      };
     case "SET_SERVERS":
       return {
         ...state,
@@ -228,6 +238,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setServer = async (server: ServerConfig) => {
     await storageService.saveActiveServerId(server.id);
+
+    const requiresReauth =
+      state.isAuthenticated &&
+      (!!state.server &&
+        (state.server.id !== server.id || state.server.url !== server.url));
+
+    if (requiresReauth) {
+      await Promise.all([
+        storageService.removeToken(),
+        storageService.removeUser(),
+      ]);
+      dispatch({ type: "SWITCH_SERVER", payload: server });
+      return;
+    }
+
     dispatch({ type: "SET_SERVER", payload: server });
   };
 

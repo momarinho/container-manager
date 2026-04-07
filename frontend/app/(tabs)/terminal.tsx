@@ -11,6 +11,7 @@ import {
   Modal,
   FlatList,
   Alert,
+  type LayoutChangeEvent,
 } from "react-native";
 import {
   History,
@@ -31,6 +32,11 @@ type ContainerOption = {
   image: string;
 };
 
+type TerminalSize = {
+  cols: number;
+  rows: number;
+};
+
 export default function TerminalScreen() {
   const [selectedContainer, setSelectedContainer] =
     useState<ContainerOption | null>(null);
@@ -41,12 +47,19 @@ export default function TerminalScreen() {
   const [input, setInput] = useState("");
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shouldAutoStart, setShouldAutoStart] = useState(false);
+  const [terminalSize, setTerminalSize] = useState<TerminalSize>({
+    cols: 80,
+    rows: 24,
+  });
 
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Hook de terminal
   const {
     isConnected,
+    isReady,
+    isReconnecting,
     sessionId,
     startSession,
     sendInput,
@@ -59,16 +72,20 @@ export default function TerminalScreen() {
     },
     (newSessionId: string) => {
       setIsSessionActive(true);
+      setShouldAutoStart(false);
       setError(null);
       console.log("Session started:", newSessionId);
     },
     () => {
       setIsSessionActive(false);
-      setOutput((prev) => prev + "\r\n[Session closed]\r\n");
+      setShouldAutoStart(false);
     },
     (errorMessage: string) => {
       setError(errorMessage);
       setIsSessionActive(false);
+      setShouldAutoStart(
+        errorMessage === "Connection lost. Attempting to reconnect...",
+      );
     },
   );
 
@@ -93,12 +110,35 @@ export default function TerminalScreen() {
     }
   }, [output]);
 
-  // Iniciar sessão automaticamente quando conectado
+  // Iniciar sessão automaticamente quando o socket estiver pronto
   useEffect(() => {
-    if (isConnected && selectedContainer && !sessionId && !isSessionActive) {
-      startSession("/bin/sh", 80, 24);
+    if (
+      shouldAutoStart &&
+      isConnected &&
+      isReady &&
+      selectedContainer &&
+      !sessionId &&
+      !isSessionActive
+    ) {
+      startSession("/bin/sh", terminalSize.cols, terminalSize.rows);
     }
-  }, [isConnected, selectedContainer, sessionId, isSessionActive]);
+  }, [
+    isConnected,
+    isReady,
+    isSessionActive,
+    selectedContainer,
+    sessionId,
+    shouldAutoStart,
+    startSession,
+    terminalSize.cols,
+    terminalSize.rows,
+  ]);
+
+  useEffect(() => {
+    if (sessionId && isSessionActive) {
+      resize(terminalSize.cols, terminalSize.rows);
+    }
+  }, [isSessionActive, resize, sessionId, terminalSize.cols, terminalSize.rows]);
 
   const handleSelectContainer = (container: ContainerOption) => {
     setSelectedContainer(container);
@@ -106,6 +146,7 @@ export default function TerminalScreen() {
     setOutput("");
     setIsSessionActive(false);
     setError(null);
+    setShouldAutoStart(true);
   };
 
   const handleSend = () => {
@@ -115,16 +156,33 @@ export default function TerminalScreen() {
     }
   };
 
-  const handleCloseSession = () => {
-    closeSession();
-    setIsSessionActive(false);
-  };
-
   const handleDisconnect = () => {
     closeSession();
     setSelectedContainer(null);
     setOutput("");
     setIsSessionActive(false);
+    setError(null);
+    setShouldAutoStart(false);
+  };
+
+  const handleReconnectSession = () => {
+    setError(null);
+    setIsSessionActive(false);
+    setShouldAutoStart(true);
+  };
+
+  const handleTerminalLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    const nextCols = Math.max(24, Math.floor((width - 24) / 8));
+    const nextRows = Math.max(8, Math.floor((height - 24) / 18));
+
+    setTerminalSize((current) => {
+      if (current.cols === nextCols && current.rows === nextRows) {
+        return current;
+      }
+
+      return { cols: nextCols, rows: nextRows };
+    });
   };
 
   // Se não selecionou container, mostra seletor
@@ -219,7 +277,13 @@ export default function TerminalScreen() {
             ]}
           />
           <Text style={styles.statusText}>
-            {isSessionActive ? "CONNECTED" : "CONNECTING..."}
+            {isReconnecting
+              ? "RECONNECTING..."
+              : isSessionActive
+                ? "CONNECTED"
+                : isConnected
+                  ? "READY"
+                  : "CONNECTING..."}
           </Text>
           <Text style={styles.selectedContainerName}>{selectedContainer.name}</Text>
         </View>
@@ -237,7 +301,20 @@ export default function TerminalScreen() {
         </View>
       ) : null}
 
-      <View style={styles.terminalContainer}>
+      {!isSessionActive ? (
+        <View style={styles.sessionActions}>
+          <TouchableOpacity
+            style={styles.reconnectButton}
+            onPress={handleReconnectSession}
+          >
+            <Text style={styles.reconnectButtonText}>
+              {isReconnecting ? "Reconectando..." : "Abrir sessão"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      <View style={styles.terminalContainer} onLayout={handleTerminalLayout}>
         <ScrollView
           ref={scrollViewRef}
           style={styles.terminalScroll}
@@ -344,6 +421,21 @@ const styles = StyleSheet.create({
   errorText: {
     color: Colors.error,
     fontSize: 14,
+  },
+  sessionActions: {
+    marginBottom: 12,
+    alignItems: "flex-start",
+  },
+  reconnectButton: {
+    backgroundColor: Colors.surfaceHigh,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  reconnectButtonText: {
+    color: Colors.primary,
+    fontSize: 13,
+    fontWeight: "600",
   },
   terminalContainer: {
     flex: 1,

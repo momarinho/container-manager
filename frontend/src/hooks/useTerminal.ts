@@ -17,14 +17,45 @@ export function useTerminal(
 ) {
   const ws = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
   const intentionalCloseRef = useRef(false);
+  const shouldReconnectRef = useRef(false);
+  const isReadyRef = useRef(false);
+  const pendingStartRef = useRef<{
+    shell: string;
+    cols: number;
+    rows: number;
+  } | null>(null);
+  const onOutputRef = useRef(onOutput);
+  const onSessionStartedRef = useRef(onSessionStarted);
+  const onSessionClosedRef = useRef(onSessionClosed);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onOutputRef.current = onOutput;
+  }, [onOutput]);
+
+  useEffect(() => {
+    onSessionStartedRef.current = onSessionStarted;
+  }, [onSessionStarted]);
+
+  useEffect(() => {
+    onSessionClosedRef.current = onSessionClosed;
+  }, [onSessionClosed]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
   // Conectar/disconectar baseado no containerId
   useEffect(() => {
+    shouldReconnectRef.current = !!containerId;
+
     if (!containerId) {
       if (ws.current) {
         intentionalCloseRef.current = true;
@@ -32,9 +63,34 @@ export function useTerminal(
         ws.current = null;
       }
       setIsConnected(false);
+      setIsReady(false);
+      isReadyRef.current = false;
+      setIsReconnecting(false);
       setSessionId(null);
+      pendingStartRef.current = null;
       return;
     }
+
+    const sendPendingStart = () => {
+      if (
+        !pendingStartRef.current ||
+        !ws.current ||
+        ws.current.readyState !== WebSocket.OPEN ||
+        !isReadyRef.current
+      ) {
+        return;
+      }
+
+      const { shell, cols, rows } = pendingStartRef.current;
+      ws.current.send(
+        JSON.stringify({
+          action: "start",
+          shell,
+          cols,
+          rows,
+        }),
+      );
+    };
 
     const connect = async () => {
       try {
@@ -47,7 +103,7 @@ export function useTerminal(
         const token = await storageService.getToken();
 
         if (!server || !token) {
-          onError?.("No server or token available");
+          onErrorRef.current?.("No server or token available");
           return;
         }
 
@@ -62,11 +118,14 @@ export function useTerminal(
 
         console.log("[Terminal] Connecting to", wsUrl);
         intentionalCloseRef.current = false;
+        isReadyRef.current = false;
+        setIsReady(false);
         ws.current = new WebSocket(wsUrl);
 
         ws.current.onopen = () => {
           console.log("[Terminal] Connected");
           setIsConnected(true);
+          setIsReconnecting(false);
         };
 
         ws.current.onmessage = (event) => {
@@ -79,29 +138,36 @@ export function useTerminal(
               case "started":
                 if (message.sessionId) {
                   setSessionId(message.sessionId);
-                  onSessionStarted?.(message.sessionId);
+                  pendingStartRef.current = null;
+                  onSessionStartedRef.current?.(message.sessionId);
                 }
                 break;
 
               case "output":
                 if (message.data) {
-                  onOutput(message.data);
+                  onOutputRef.current(message.data);
                 }
                 break;
 
               case "closed":
-                setIsConnected(false);
                 setSessionId(null);
-                onSessionClosed?.();
+                onSessionClosedRef.current?.();
                 break;
 
               case "error":
-                setIsConnected(false);
-                onError?.(message.message || "Unknown error");
+                pendingStartRef.current = null;
+                console.error(
+                  "[Terminal] Server error:",
+                  message.message || "Unknown error",
+                );
+                onErrorRef.current?.(message.message || "Unknown error");
                 break;
 
               case "ready":
                 console.log("[Terminal] Ready to start session");
+                isReadyRef.current = true;
+                setIsReady(true);
+                sendPendingStart();
                 break;
             }
           } catch (err) {
@@ -111,24 +177,30 @@ export function useTerminal(
 
         ws.current.onerror = (event) => {
           console.error("[Terminal] Error:", event);
-          setIsConnected(false);
-          onError?.("Connection error");
+          onErrorRef.current?.("Connection error");
         };
 
         ws.current.onclose = (event) => {
           console.log("[Terminal] Disconnected (code:", event.code, ")");
           setIsConnected(false);
+          setIsReady(false);
+          isReadyRef.current = false;
+          setSessionId(null);
           ws.current = null;
 
-          // Sessão foi fechada intencionalmente ou terminou
-          if (intentionalCloseRef.current) {
-            setSessionId(null);
-            onSessionClosed?.();
+          if (shouldReconnectRef.current && !intentionalCloseRef.current) {
+            setIsReconnecting(true);
+            onErrorRef.current?.("Connection lost. Attempting to reconnect...");
+
+            reconnectTimeoutRef.current = setTimeout(() => {
+              console.log("[Terminal] Attempting to reconnect...");
+              void connect();
+            }, 2000);
           }
         };
       } catch (err) {
         console.error("[Terminal] Connection error:", err);
-        onError?.(err instanceof Error ? err.message : "Unknown error");
+        onErrorRef.current?.(err instanceof Error ? err.message : "Unknown error");
       }
     };
 
@@ -136,6 +208,7 @@ export function useTerminal(
 
     // Cleanup
     return () => {
+      shouldReconnectRef.current = false;
       intentionalCloseRef.current = true;
 
       if (reconnectTimeoutRef.current) {
@@ -148,7 +221,7 @@ export function useTerminal(
         ws.current = null;
       }
     };
-  }, [containerId, onOutput, onSessionStarted, onSessionClosed, onError]);
+  }, [containerId]);
 
   /**
    * Inicia uma nova sessão de terminal
@@ -158,17 +231,19 @@ export function useTerminal(
     cols: number = 80,
     rows: number = 24,
   ) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      const message = {
-        action: "start",
-        shell,
-        cols,
-        rows,
-      };
-      ws.current.send(JSON.stringify(message));
-    } else {
-      console.error("[Terminal] Cannot start session: not connected");
+    pendingStartRef.current = { shell, cols, rows };
+
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !isReady) {
+      return;
     }
+
+    const message = {
+      action: "start",
+      shell,
+      cols,
+      rows,
+    };
+    ws.current.send(JSON.stringify(message));
   };
 
   /**
@@ -209,16 +284,18 @@ export function useTerminal(
    */
   const closeSession = () => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN && sessionId) {
+      pendingStartRef.current = null;
       const message = {
         action: "close",
       };
       ws.current.send(JSON.stringify(message));
-      intentionalCloseRef.current = true;
     }
   };
 
   return {
     isConnected,
+    isReady,
+    isReconnecting,
     sessionId,
     startSession,
     sendInput,

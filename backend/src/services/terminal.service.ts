@@ -1,131 +1,258 @@
-import type { IPty } from 'node-pty';
-import { logger } from '../utils/logger';
-import { config } from '../utils/config';
+import type { Duplex } from "stream";
+import Docker, { Exec } from "dockerode";
+import { logger } from "../utils/logger";
+import { config } from "../utils/config";
+import { getDockerSocketPath } from "../utils/dockerSocket";
+
+type TerminalListener = (data: string) => void;
 
 export interface TerminalSession {
   id: string;
   containerId: string;
-  pty: IPty;
+  exec: Exec;
+  stream: Duplex;
   lastActivity: number;
+  listeners: Set<TerminalListener>;
+  closeListeners: Set<() => void>;
+  bufferedOutput: string[];
 }
 
 export class TerminalService {
   private sessions: Map<string, TerminalSession>;
   private idleCheckInterval: NodeJS.Timeout;
-  private nodePty: typeof import('node-pty') | null = null;
-  private nodePtyLoadError: Error | null = null;
+  private docker: Docker;
 
   constructor() {
     this.sessions = new Map();
     this.idleCheckInterval = setInterval(() => this.checkIdleSessions(), 60000);
-    logger.info('Terminal service initialized');
-  }
 
-  private getNodePty(): typeof import('node-pty') {
-    if (this.nodePty) {
-      return this.nodePty;
-    }
+    const socketPath = getDockerSocketPath();
+    this.docker = new Docker({ socketPath });
 
-    if (this.nodePtyLoadError) {
-      throw this.nodePtyLoadError;
-    }
-
-    try {
-      this.nodePty = require('node-pty') as typeof import('node-pty');
-      return this.nodePty;
-    } catch (error) {
-      this.nodePtyLoadError =
-        error instanceof Error ? error : new Error('Failed to load node-pty');
-      logger.warn('Terminal support unavailable: failed to load node-pty', {
-        error: this.nodePtyLoadError.message,
-      });
-      throw this.nodePtyLoadError;
-    }
+    logger.info(`Terminal service initialized with socket: ${socketPath}`);
   }
 
   async createSession(
     containerId: string,
-    shell: string = '/bin/sh',
+    shell: string = "/bin/sh",
     cols: number = 80,
-    rows: number = 24
+    rows: number = 24,
   ): Promise<string> {
     if (this.sessions.size >= config.terminal.maxSessions) {
-      throw new Error('Maximum terminal sessions reached');
+      throw new Error("Maximum terminal sessions reached");
     }
 
-    const nodePty = this.getNodePty();
-    const sessionId = `${containerId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const container = this.docker.getContainer(containerId);
+    const details = await container.inspect();
 
-    try {
-      const ptyProcess = nodePty.spawn('docker', ['exec', '-it', containerId, shell], {
-        name: 'xterm-256color',
-        cols,
-        rows,
-        cwd: process.env.HOME,
-        env: process.env,
-      });
-
-      const session: TerminalSession = {
-        id: sessionId,
-        containerId,
-        pty: ptyProcess,
-        lastActivity: Date.now(),
-      };
-
-      this.sessions.set(sessionId, session);
-      logger.info(`Created terminal session ${sessionId} for container ${containerId}`);
-
-      return sessionId;
-    } catch (error) {
-      logger.error(`Failed to create terminal session for container ${containerId}:`, error);
-      throw new Error('Failed to create terminal session');
+    if (!details.State?.Running) {
+      throw new Error("Container is not running");
     }
+
+    const sessionId = `${containerId}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 11)}`;
+
+    let lastError: Error | null = null;
+
+    for (const candidate of this.getShellCandidates(shell)) {
+      try {
+        const exec = await container.exec({
+          AttachStdin: true,
+          AttachStdout: true,
+          AttachStderr: true,
+          Tty: true,
+          Cmd: [candidate],
+        });
+
+        const stream = (await exec.start({
+          hijack: true,
+          stdin: true,
+          Tty: true,
+        })) as Duplex;
+
+        const session: TerminalSession = {
+          id: sessionId,
+          containerId,
+          exec,
+          stream,
+          lastActivity: Date.now(),
+          listeners: new Set(),
+          closeListeners: new Set(),
+          bufferedOutput: [],
+        };
+
+        this.sessions.set(sessionId, session);
+        this.attachStreamHandlers(session);
+
+        // Resize immediately so the exec session matches the client terminal.
+        await exec.resize({ h: rows, w: cols });
+
+        logger.info(
+          `Created terminal session ${sessionId} for container ${containerId} using shell ${candidate}`,
+        );
+
+        return sessionId;
+      } catch (error) {
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error("Failed to start terminal shell");
+
+        logger.warn("Failed to start terminal shell", {
+          containerId,
+          shell: candidate,
+          error: lastError.message,
+        });
+      }
+    }
+
+    throw new Error(lastError?.message ?? "Failed to create terminal session");
   }
 
   write(sessionId: string, data: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new Error('Terminal session not found');
+      throw new Error("Terminal session not found");
     }
 
-    session.pty.write(data);
+    session.stream.write(data);
     session.lastActivity = Date.now();
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new Error('Terminal session not found');
+      throw new Error("Terminal session not found");
     }
 
-    session.pty.resize(cols, rows);
     session.lastActivity = Date.now();
+
+    void session.exec.resize({ h: rows, w: cols }).catch((error) => {
+      logger.warn(`Failed to resize terminal session ${sessionId}:`, error);
+    });
   }
 
   onData(sessionId: string, callback: (data: string) => void): void {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new Error('Terminal session not found');
+      throw new Error("Terminal session not found");
     }
 
-    session.pty.onData((data) => {
-      session.lastActivity = Date.now();
-      callback(data);
-    });
+    session.listeners.add(callback);
 
-    session.pty.onExit(({ exitCode, signal }) => {
-      logger.info(`Terminal session ${sessionId} exited with code ${exitCode}, signal ${signal}`);
-      this.sessions.delete(sessionId);
-      callback(`\r\n[Session closed. Exit code: ${exitCode}${signal ? `, Signal: ${signal}` : ''}]\r\n`);
-    });
+    if (session.bufferedOutput.length > 0) {
+      for (const chunk of session.bufferedOutput) {
+        callback(chunk);
+      }
+      session.bufferedOutput = [];
+    }
+  }
+
+  onClose(sessionId: string, callback: () => void): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error("Terminal session not found");
+    }
+
+    session.closeListeners.add(callback);
   }
 
   closeSession(sessionId: string): void {
     const session = this.sessions.get(sessionId);
-    if (session) {
-      session.pty.kill();
-      this.sessions.delete(sessionId);
-      logger.info(`Closed terminal session ${sessionId}`);
+    if (!session) {
+      return;
+    }
+
+    try {
+      session.stream.write("exit\n");
+      session.stream.end();
+    } catch {
+      // Stream may already be closed; destroy below as a fallback.
+    }
+
+    setTimeout(() => {
+      if (this.sessions.has(sessionId)) {
+        session.stream.destroy();
+      }
+    }, 250);
+    logger.info(`Requested close for terminal session ${sessionId}`);
+  }
+
+  private attachStreamHandlers(session: TerminalSession): void {
+    let finalized = false;
+
+    const finalize = async () => {
+      if (finalized) {
+        return;
+      }
+
+      finalized = true;
+
+      const closeMessage = await this.getCloseMessage(session.exec);
+      this.emit(session, closeMessage);
+      this.notifyClosed(session);
+      this.sessions.delete(session.id);
+    };
+
+    session.stream.on("data", (chunk: Buffer | string) => {
+      session.lastActivity = Date.now();
+      this.emit(session, chunk.toString());
+    });
+
+    session.stream.on("end", () => {
+      void finalize();
+    });
+
+    session.stream.on("close", () => {
+      void finalize();
+    });
+
+    session.stream.on("error", (error) => {
+      logger.error(`Terminal session ${session.id} stream error:`, error);
+      const message =
+        error instanceof Error ? error.message : "Unknown terminal stream error";
+      this.emit(session, `\r\n[Terminal error: ${message}]\r\n`);
+      void finalize();
+    });
+  }
+
+  private emit(session: TerminalSession, data: string): void {
+    if (session.listeners.size === 0) {
+      session.bufferedOutput.push(data);
+      return;
+    }
+
+    for (const listener of session.listeners) {
+      listener(data);
+    }
+  }
+
+  private notifyClosed(session: TerminalSession): void {
+    for (const listener of session.closeListeners) {
+      try {
+        listener();
+      } catch (error) {
+        logger.warn(`Failed to notify terminal close listener for ${session.id}:`, error);
+      }
+    }
+
+    session.closeListeners.clear();
+  }
+
+  private getShellCandidates(shell: string): string[] {
+    return [...new Set([shell, "/bin/sh", "sh", "/bin/bash", "bash"])];
+  }
+
+  private async getCloseMessage(exec: Exec): Promise<string> {
+    try {
+      const info = await exec.inspect();
+      const exitCode =
+        typeof info?.ExitCode === "number" ? info.ExitCode : "unknown";
+
+      return `\r\n[Session closed. Exit code: ${exitCode}]\r\n`;
+    } catch {
+      return "\r\n[Session closed]\r\n";
     }
   }
 
@@ -158,9 +285,8 @@ export class TerminalService {
     for (const sessionId of this.sessions.keys()) {
       this.closeSession(sessionId);
     }
-    if (this.idleCheckInterval) {
-      clearInterval(this.idleCheckInterval);
-    }
+
+    clearInterval(this.idleCheckInterval);
   }
 }
 
