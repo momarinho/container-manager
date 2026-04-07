@@ -14,7 +14,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import {
-  History,
+  Command,
   Send,
   Terminal as TerminalIcon,
   X,
@@ -37,10 +37,16 @@ type TerminalSize = {
   rows: number;
 };
 
+type CommandCategory = {
+  title: string;
+  commands: string[];
+};
+
 export default function TerminalScreen() {
   const [selectedContainer, setSelectedContainer] =
     useState<ContainerOption | null>(null);
   const [showContainerSelector, setShowContainerSelector] = useState(false);
+  const [showCommandsModal, setShowCommandsModal] = useState(false);
   const [containers, setContainers] = useState<ContainerOption[]>([]);
   const [loadingContainers, setLoadingContainers] = useState(false);
   const [output, setOutput] = useState<string>("");
@@ -54,6 +60,70 @@ export default function TerminalScreen() {
   });
 
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Comandos organizados por categoria
+  const commandCategories: CommandCategory[] = [
+    {
+      title: "Arquivos",
+      commands: [
+        "ls -la",
+        "pwd",
+        "cat /etc/os-release",
+        "find / -name",
+        "grep -r",
+        "tail -f",
+        "du -sh",
+        "df -h",
+      ],
+    },
+    {
+      title: "Processos",
+      commands: [
+        "ps aux",
+        "top",
+        "htop",
+        "kill -9",
+        "pkill",
+      ],
+    },
+    {
+      title: "Rede",
+      commands: [
+        "ping -c 4",
+        "curl -v",
+        "wget",
+        "nslookup",
+        "netstat -tlnp",
+        "ss -tlnp",
+      ],
+    },
+    {
+      title: "Sistema",
+      commands: [
+        "env",
+        "uname -a",
+        "free -h",
+        "uptime",
+        "whoami",
+        "id",
+      ],
+    },
+    {
+      title: "Serviços",
+      commands: [
+        "systemctl status",
+        "service status",
+      ],
+    },
+    {
+      title: "Debug",
+      commands: [
+        "strace -p",
+        "lsof -i",
+        "netstat -p",
+      ],
+    },
+  ];
 
   // Hook de terminal
   const {
@@ -169,6 +239,11 @@ export default function TerminalScreen() {
     setError(null);
     setIsSessionActive(false);
     setShouldAutoStart(true);
+  };
+
+  const handleSelectCommand = (command: string) => {
+    setInput(command);
+    setShowCommandsModal(false);
   };
 
   const handleTerminalLayout = (event: LayoutChangeEvent) => {
@@ -330,12 +405,14 @@ export default function TerminalScreen() {
         style={styles.inputArea}
       >
         <TouchableOpacity
-          style={styles.historyBtn}
+          style={styles.commandsBtn}
           onPress={() => {
-            // TODO: Implementar histórico de comandos
+            console.log("Opening commands modal");
+            setShowCommandsModal(true);
           }}
+          activeOpacity={0.7}
         >
-          <History color={Colors.secondary} size={20} />
+          <Command color={Colors.secondary} size={20} />
         </TouchableOpacity>
 
         <View style={styles.inputWrapper}>
@@ -362,6 +439,39 @@ export default function TerminalScreen() {
           <Send color={Colors.background} size={20} />
         </TouchableOpacity>
       </KeyboardAvoidingView>
+
+      {/* Modal de Comandos */}
+      <Modal
+        visible={showCommandsModal}
+        animationType="slide"
+        onRequestClose={() => setShowCommandsModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Comandos</Text>
+            <TouchableOpacity onPress={() => setShowCommandsModal(false)}>
+              <X color={Colors.onSurface} size={24} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.commandsList}>
+            {commandCategories.map((category) => (
+              <View key={category.title} style={styles.commandCategory}>
+                <Text style={styles.commandCategoryTitle}>{category.title}</Text>
+                {category.commands.map((cmd) => (
+                  <TouchableOpacity
+                    key={cmd}
+                    style={styles.commandItem}
+                    onPress={() => handleSelectCommand(cmd)}
+                  >
+                    <Text style={styles.commandText}>{cmd}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -469,7 +579,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingBottom: 24,
   },
-  historyBtn: {
+  commandsBtn: {
     padding: 12,
     backgroundColor: Colors.surfaceHigh,
     borderRadius: 12,
@@ -591,5 +701,31 @@ const styles = StyleSheet.create({
   modalContainerImage: {
     fontSize: 14,
     color: Colors.textMuted,
+  },
+  commandsList: {
+    flex: 1,
+  },
+  commandCategory: {
+    marginBottom: 24,
+  },
+  commandCategoryTitle: {
+    fontSize: 13,
+    fontWeight: "bold",
+    color: Colors.textSubtle,
+    fontFamily: monoFont,
+    letterSpacing: 1.2,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  commandItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceHigh,
+  },
+  commandText: {
+    color: Colors.onSurface,
+    fontSize: 15,
+    fontFamily: monoFont,
   },
 });

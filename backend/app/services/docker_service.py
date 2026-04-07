@@ -49,7 +49,7 @@ class DockerService:
         self.api.remove_container(container_id, force=force, v=True)
 
     def get_container_stats(self, container_id: str) -> dict[str, Any]:
-        stats = self.api.stats(container_id, stream=False, decode=True)
+        stats = self.api.stats(container_id, stream=False)
         return self._transform_stats(stats, container_id)
 
     def open_log_stream(

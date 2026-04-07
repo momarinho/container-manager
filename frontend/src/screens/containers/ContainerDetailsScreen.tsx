@@ -964,6 +964,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#0b0f14",
     padding: 14,
     gap: 8,
+    overflow: "scroll",
   },
   logLine: {
     color: "#c9f1d5",

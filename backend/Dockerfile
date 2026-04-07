@@ -14,8 +14,8 @@ COPY app ./app
 
 RUN pip install --no-cache-dir .
 
-RUN useradd --create-home --uid 1001 appuser
-USER appuser
+# RUN useradd --create-home --uid 1000 appuser
+# USER appuser
 
 EXPOSE 3000
 
