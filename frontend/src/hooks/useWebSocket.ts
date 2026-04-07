@@ -3,7 +3,8 @@ import { storageService } from '../services/storage.service';
 
 interface WebSocketMessage {
   type: string;
-  data: any;
+  data?: any;
+  message?: string;
   timestamp?: number;
 }
 
@@ -93,7 +94,9 @@ export function useWebSocket<T = any>(
             
             // Ignora mensagens de erro ou connected
             if (message.type === 'error') {
-              console.error('[WebSocket] Error message:', message.data);
+              const errorMessage = message.message || 'WebSocket error';
+              console.error('[WebSocket] Error message:', errorMessage);
+              setError(errorMessage);
               return;
             }
             if (message.type === 'connected') {
@@ -102,7 +105,9 @@ export function useWebSocket<T = any>(
             }
             
             // Chama callback com os dados
-            onMessageRef.current(message.data);
+            if (message.data !== undefined) {
+              onMessageRef.current(message.data);
+            }
           } catch (err) {
             console.error('[WebSocket] Error parsing message:', err);
           }

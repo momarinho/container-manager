@@ -1,9 +1,160 @@
-import React from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity } from 'react-native';
-import { Search as SearchIcon, Server, Layers, ExternalLink, Terminal } from 'lucide-react-native';
-import { Colors } from '../../constants/Colors';
+import React, {
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import {
+  ExternalLink,
+  Search as SearchIcon,
+  Server,
+} from "lucide-react-native";
+import { Colors } from "../../constants/Colors";
+import { containersService } from "../../src/services/containers.service";
+import type { Container } from "../../src/types/container.types";
+
+type StatusFilter = "all" | "running" | "exited" | "paused";
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "ALL" },
+  { value: "running", label: "RUNNING" },
+  { value: "exited", label: "STOPPED" },
+  { value: "paused", label: "PAUSED" },
+];
+
+const STATUS_COLORS: Record<string, string> = {
+  running: Colors.tertiary,
+  paused: Colors.warning,
+  exited: Colors.outline,
+  created: Colors.primary,
+};
+
+function formatRelativeAge(created: number): string {
+  const createdAt = created * 1000;
+  const diffMs = Date.now() - createdAt;
+  const diffHours = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)));
+
+  if (diffHours < 1) {
+    const diffMinutes = Math.max(1, Math.floor(diffMs / (1000 * 60)));
+    return `${diffMinutes}m ago`;
+  }
+
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const days = Math.floor(diffHours / 24);
+  const hours = diffHours % 24;
+  return hours > 0 ? `${days}d ${hours}h ago` : `${days}d ago`;
+}
+
+function getPrimaryName(container: Container): string {
+  return container.names[0]?.replace(/^\//, "") || container.id.slice(0, 12);
+}
 
 export default function SearchScreen() {
+  const router = useRouter();
+  const hasLoadedOnFocusRef = useRef(false);
+
+  const [containers, setContainers] = useState<Container[]>([]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+
+  const loadContainers = useCallback(async (showSpinner: boolean) => {
+    try {
+      if (showSpinner) {
+        setLoading(true);
+      }
+
+      setError(null);
+      const data = await containersService.list({ all: true });
+      setContainers(data);
+    } catch (loadError) {
+      console.error("Error loading search data:", loadError);
+      setError("Nao foi possivel carregar os containers.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const showSpinner = !hasLoadedOnFocusRef.current;
+      hasLoadedOnFocusRef.current = true;
+      void loadContainers(showSpinner);
+    }, [loadContainers]),
+  );
+
+  const filteredContainers = useMemo(() => {
+    return containers.filter((container) => {
+      const matchesStatus =
+        statusFilter === "all" || container.state === statusFilter;
+
+      if (!matchesStatus) {
+        return false;
+      }
+
+      if (!deferredQuery) {
+        return true;
+      }
+
+      const primaryName = getPrimaryName(container).toLowerCase();
+      const names = container.names.join(" ").toLowerCase();
+      const image = container.image.toLowerCase();
+      const status = container.status.toLowerCase();
+      const state = container.state.toLowerCase();
+
+      return (
+        primaryName.includes(deferredQuery) ||
+        names.includes(deferredQuery) ||
+        image.includes(deferredQuery) ||
+        status.includes(deferredQuery) ||
+        state.includes(deferredQuery)
+      );
+    });
+  }, [containers, deferredQuery, statusFilter]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadContainers(false);
+  };
+
+  const openContainer = (containerId: string) => {
+    router.push(`/container/${containerId}`);
+  };
+
+  const summaryLabel =
+    filteredContainers.length === 1
+      ? "1 RESULT"
+      : `${filteredContainers.length} RESULTS`;
+
+  if (loading && containers.length === 0) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loadingText}>Carregando indice de containers...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -11,93 +162,150 @@ export default function SearchScreen() {
           <Text style={styles.headerTitle}>COMMAND_QUERY</Text>
           <View style={styles.headerLine} />
         </View>
+
         <View style={styles.searchWrapper}>
-          <SearchIcon style={styles.searchIcon} color={Colors.outline} size={20} />
+          <SearchIcon
+            style={styles.searchIcon}
+            color={Colors.textPlaceholder}
+            size={20}
+          />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search containers, logs, images"
-            placeholderTextColor="rgba(65, 71, 82, 0.5)" // outline/50
-            defaultValue="Search containers, logs, images"
+            placeholder="Search containers by name, image or state"
+            placeholderTextColor={Colors.textPlaceholder}
+            value={query}
+            onChangeText={setQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
           />
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          {STATUS_OPTIONS.map((option) => {
+            const selected = option.value === statusFilter;
+
+            return (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.filterChip,
+                  selected && styles.filterChipActive,
+                ]}
+                onPress={() => setStatusFilter(option.value)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    selected && styles.filterChipTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryText}>{summaryLabel}</Text>
+          <Text style={styles.summaryHint}>LIVE CONTAINER INDEX</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.resultsContainer}>
-          {/* Result 1: Container */}
-          <TouchableOpacity style={styles.resultCard}>
-            <View style={[styles.cardAccent, { backgroundColor: Colors.tertiary }]} />
-            <View style={styles.cardContent}>
-              <View style={styles.iconBox}>
-                <Server color={Colors.tertiary} size={24} />
-              </View>
-              <View style={styles.infoCol}>
-                <View style={styles.titleRow}>
-                  <Text style={styles.title}>nginx-proxy</Text>
-                  <View style={[styles.statusBadge, { backgroundColor: 'rgba(103, 223, 112, 0.1)' }]}>
-                    <View style={[styles.statusDot, { backgroundColor: Colors.tertiary }]} />
-                    <Text style={[styles.statusText, { color: Colors.tertiary }]}>RUNNING</Text>
-                  </View>
-                </View>
-                <Text style={styles.subtitle}>ID: 4f8d29c3a1b0 • Uptime: 14d 2h</Text>
-              </View>
-            </View>
-            <ExternalLink color={Colors.primary} size={20} />
-          </TouchableOpacity>
-
-          {/* Result 2: Logs */}
-          <TouchableOpacity style={styles.resultCard}>
-            <View style={styles.logHeader}>
-              <View style={styles.logIconRow}>
-                <View style={styles.iconBox}>
-                  <Terminal color={Colors.error} size={24} />
-                </View>
-                <View>
-                  <Text style={styles.title}>
-                    redis logs <Text style={{ color: Colors.error }}>{'"'}error{'"'}</Text>
-                  </Text>
-                  <Text style={styles.subtitle}>3 matches found in standard output</Text>
-                </View>
-              </View>
-              <View style={[styles.statusBadge, { backgroundColor: 'rgba(255, 180, 171, 0.1)' }]}>
-                <Text style={[styles.statusText, { color: Colors.error }]}>CRITICAL</Text>
-              </View>
-            </View>
-            <View style={styles.logBlock}>
-              <Text style={styles.logLine}>
-                <Text style={styles.logTime}>14:02:11 </Text>
-                <Text style={styles.logError}>[ERROR] </Text>
-                <Text style={styles.logText}>Failed to write to AOF file...</Text>
-              </Text>
-              <Text style={styles.logLine}>
-                <Text style={styles.logTime}>14:02:15 </Text>
-                <Text style={styles.logError}>[ERROR] </Text>
-                <Text style={styles.logTextWhite}>Background saving error</Text>
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Result 3: Image */}
-          <TouchableOpacity style={styles.resultCard}>
-            <View style={styles.cardContent}>
-              <View style={styles.iconBox}>
-                <Layers color={Colors.primary} size={24} />
-              </View>
-              <View style={styles.infoCol}>
-                <Text style={styles.title}>postgres:latest</Text>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>IMAGE</Text>
-                  <View style={styles.metaDot} />
-                  <Text style={styles.metaValue}>SHA256:d48e23f...</Text>
-                  <View style={styles.metaDot} />
-                  <Text style={styles.metaValue}>412MB</Text>
-                </View>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.pullBtn}>
-              <Text style={styles.pullBtnText}>PULL</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
+        {error ? (
+          <View style={styles.messageCard}>
+            <Text style={styles.messageTitle}>Search unavailable</Text>
+            <Text style={styles.messageText}>{error}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => void loadContainers(true)}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {!error && filteredContainers.length === 0 ? (
+          <View style={styles.messageCard}>
+            <Text style={styles.messageTitle}>No matching containers</Text>
+            <Text style={styles.messageText}>
+              Ajuste a busca ou troque o filtro de status para ampliar os
+              resultados.
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.resultsContainer}>
+          {filteredContainers.map((container) => {
+            const primaryName = getPrimaryName(container);
+            const statusColor = STATUS_COLORS[container.state] || Colors.primary;
+
+            return (
+              <TouchableOpacity
+                key={container.id}
+                style={styles.resultCard}
+                onPress={() => openContainer(container.id)}
+              >
+                <View
+                  style={[styles.cardAccent, { backgroundColor: statusColor }]}
+                />
+
+                <View style={styles.cardContent}>
+                  <View style={styles.iconBox}>
+                    <Server color={statusColor} size={22} />
+                  </View>
+
+                  <View style={styles.infoCol}>
+                    <View style={styles.titleRow}>
+                      <Text style={styles.title}>{primaryName}</Text>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          { backgroundColor: `${statusColor}1A` },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.statusDot,
+                            { backgroundColor: statusColor },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.statusText,
+                            { color: statusColor },
+                          ]}
+                        >
+                          {container.state.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.subtitle}>{container.image}</Text>
+                    <Text style={styles.metaText}>
+                      ID {container.id.slice(0, 12)} • Created{" "}
+                      {formatRelativeAge(container.created)} •{" "}
+                      {container.ports.length} port
+                      {container.ports.length === 1 ? "" : "s"}
+                    </Text>
+                  </View>
+
+                  <ExternalLink color={Colors.primary} size={18} />
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
     </View>
@@ -110,102 +318,156 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     paddingTop: 48,
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.background,
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    color: Colors.textMuted,
+    fontSize: 14,
+  },
   header: {
     paddingHorizontal: 24,
-    marginBottom: 24,
+    gap: 12,
+    marginBottom: 20,
   },
   headerTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    marginBottom: 8,
   },
   headerTitle: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     letterSpacing: 2,
     color: Colors.primary,
   },
   headerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(65, 71, 82, 0.2)', // outline/20
+    backgroundColor: "rgba(65, 71, 82, 0.2)",
   },
   searchWrapper: {
-    position: 'relative',
+    position: "relative",
     backgroundColor: Colors.surfaceLow,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    borderWidth: 1,
+    borderColor: Colors.outline,
   },
   searchIcon: {
-    position: 'absolute',
-    left: 20,
-    top: 20,
+    position: "absolute",
+    left: 18,
+    top: 18,
     zIndex: 1,
   },
   searchInput: {
-    paddingVertical: 20,
-    paddingLeft: 56,
-    paddingRight: 24,
+    paddingVertical: 16,
+    paddingLeft: 52,
+    paddingRight: 20,
     fontSize: 16,
     color: Colors.onSurface,
+  },
+  filterRow: {
+    gap: 10,
+    paddingVertical: 4,
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: Colors.surfaceLow,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  filterChipText: {
+    color: Colors.textMuted,
+    fontSize: 11,
+    fontWeight: "bold",
+    letterSpacing: 1.2,
+  },
+  filterChipTextActive: {
+    color: Colors.background,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  summaryText: {
+    color: Colors.onSurface,
+    fontSize: 12,
+    fontWeight: "bold",
+    letterSpacing: 1.2,
+  },
+  summaryHint: {
+    color: Colors.textSubtle,
+    fontSize: 11,
+    letterSpacing: 1,
   },
   scrollContent: {
     paddingHorizontal: 24,
     paddingBottom: 40,
+    gap: 16,
   },
   resultsContainer: {
-    gap: 16,
+    gap: 14,
   },
   resultCard: {
     backgroundColor: Colors.surfaceLow,
-    padding: 20,
-    position: 'relative',
-    overflow: 'hidden',
+    padding: 18,
+    position: "relative",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(65, 71, 82, 0.18)",
   },
   cardAccent: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     width: 4,
-    height: '100%',
+    height: "100%",
   },
   cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
   },
   iconBox: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 1,
-    borderColor: 'rgba(65, 71, 82, 0.1)',
+    borderColor: "rgba(65, 71, 82, 0.18)",
   },
   infoCol: {
     flex: 1,
+    gap: 4,
   },
   titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
   },
   title: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: "bold",
     color: Colors.onSurface,
   },
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
+    paddingVertical: 4,
   },
   statusDot: {
     width: 6,
@@ -214,83 +476,46 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     letterSpacing: 1,
   },
   subtitle: {
-    fontSize: 12,
-    color: Colors.outline,
-    fontFamily: 'monospace',
+    fontSize: 13,
+    color: Colors.textMuted,
   },
-  logHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+  metaText: {
+    fontSize: 11,
+    color: Colors.textSubtle,
+    fontFamily: "monospace",
   },
-  logIconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-  },
-  logBlock: {
-    backgroundColor: Colors.background,
-    padding: 12,
-    borderLeftWidth: 2,
-    borderLeftColor: 'rgba(255, 180, 171, 0.5)',
-  },
-  logLine: {
-    fontSize: 12,
-    fontFamily: 'monospace',
-    marginBottom: 4,
-  },
-  logTime: {
-    color: Colors.outline,
-    opacity: 0.7,
-  },
-  logError: {
-    color: Colors.error,
-  },
-  logText: {
-    color: Colors.outline,
-    opacity: 0.7,
-  },
-  logTextWhite: {
-    color: Colors.onSurface,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
-  },
-  metaLabel: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: Colors.outline,
-    letterSpacing: 1,
-  },
-  metaDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.outline,
-  },
-  metaValue: {
-    fontSize: 10,
-    color: Colors.outline,
-    fontFamily: 'monospace',
-  },
-  pullBtn: {
-    backgroundColor: Colors.surfaceHigh,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  messageCard: {
+    backgroundColor: Colors.surfaceLow,
     borderWidth: 1,
-    borderColor: 'rgba(65, 71, 82, 0.2)',
+    borderColor: Colors.outline,
+    padding: 20,
+    gap: 8,
   },
-  pullBtnText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: Colors.primary,
+  messageTitle: {
+    color: Colors.onSurface,
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  messageText: {
+    color: Colors.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  retryButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  retryButtonText: {
+    color: Colors.background,
+    fontSize: 11,
+    fontWeight: "bold",
+    letterSpacing: 1,
   },
 });

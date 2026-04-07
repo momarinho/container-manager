@@ -124,7 +124,10 @@ export default function LoginScreen() {
       await login(credentials, serverUrl, serverName);
     } catch (error: any) {
       const message =
-        error.response?.data?.message || error.message || "Login failed";
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        "Login failed";
       Alert.alert("Login Error", message);
     }
   };
@@ -182,6 +185,9 @@ export default function LoginScreen() {
                     keyboardType="url"
                   />
                 </View>
+                <Text style={styles.helperText}>
+                  Use `localhost` apenas no mesmo computador. Em celular fisico, use o IP da maquina que roda o backend.
+                </Text>
               </View>
 
               {/* Username / Access Token */}
@@ -428,6 +434,11 @@ const styles = StyleSheet.create({
     flex: 1,
     color: COLORS.primaryFixedDim,
     fontSize: 14,
+  },
+  helperText: {
+    color: COLORS.outline,
+    fontSize: 11,
+    lineHeight: 16,
   },
   checkboxContainer: {
     flexDirection: "row",
