@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import bcrypt
 
 from app.config import config
+from app.models import AuthResponse, AuthUser
 from app.security import expiration_to_milliseconds, sign_jwt, verify_jwt
 
 
@@ -48,18 +49,18 @@ class AuthService:
     def generate_token(self, user_id: str, username: str) -> str:
         return sign_jwt({"userId": user_id, "username": username})
 
-    def build_login_response(self, username: str | None = None) -> dict[str, object]:
+    def build_login_response(self, username: str | None = None) -> AuthResponse:
         user_id = username or "api-user"
         resolved_username = username or "api-user"
         token = self.generate_token(user_id, resolved_username)
-        return {
-            "token": token,
-            "expiresAt": int(expiration_to_milliseconds(config.jwt_expires_in)),
-            "user": {
-                "id": user_id,
-                "username": resolved_username,
-            },
-        }
+        return AuthResponse(
+            token=token,
+            expiresAt=int(expiration_to_milliseconds(config.jwt_expires_in)),
+            user=AuthUser(
+                id=user_id,
+                username=resolved_username,
+            ),
+        )
 
     def verify_token(self, token: str) -> dict[str, str] | None:
         try:

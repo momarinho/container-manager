@@ -11,6 +11,7 @@ Requires-Dist: psutil<8.0,>=7.0
 Requires-Dist: PyJWT<3.0,>=2.10
 Requires-Dist: bcrypt<5.0,>=4.1
 Requires-Dist: python-dotenv<2.0,>=1.0
+Requires-Dist: httpx<1.0,>=0.27
 Provides-Extra: dev
 
 # ContainerMaster Backend

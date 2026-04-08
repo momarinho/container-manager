@@ -15,6 +15,19 @@ def _get_int(name: str, default: int) -> int:
     return int(value)
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
+def _get_csv(name: str) -> tuple[str, ...]:
+    return tuple(
+        item.strip() for item in os.getenv(name, "").split(",") if item.strip()
+    )
+
+
 @dataclass(frozen=True)
 class AppConfig:
     host: str
@@ -36,6 +49,17 @@ class AppConfig:
     log_flush_interval: int
     terminal_idle_timeout: int
     terminal_max_sessions: int
+    tunnel_provider: str
+    tunnel_status_poll_interval: int
+    tailscale_cli_path: str
+    tailscale_api_base_url: str
+    tailscale_api_token: str
+    tailscale_tailnet: str
+    tailscale_auth_key: str
+    tailscale_hostname: str
+    tailscale_accept_dns: bool
+    tailscale_accept_routes: bool
+    tailscale_advertise_tags: tuple[str, ...]
 
 
 def load_config() -> AppConfig:
@@ -69,6 +93,19 @@ def load_config() -> AppConfig:
         log_flush_interval=_get_int("LOG_FLUSH_INTERVAL", 100),
         terminal_idle_timeout=_get_int("TERMINAL_IDLE_TIMEOUT", 600000),
         terminal_max_sessions=_get_int("TERMINAL_MAX_SESSIONS", 10),
+        tunnel_provider=os.getenv("TUNNEL_PROVIDER", "tailscale"),
+        tunnel_status_poll_interval=_get_int("TUNNEL_STATUS_POLL_INTERVAL", 5000),
+        tailscale_cli_path=os.getenv("TAILSCALE_CLI_PATH", "tailscale"),
+        tailscale_api_base_url=os.getenv(
+            "TAILSCALE_API_BASE_URL", "https://api.tailscale.com"
+        ),
+        tailscale_api_token=os.getenv("TAILSCALE_API_TOKEN", ""),
+        tailscale_tailnet=os.getenv("TAILSCALE_TAILNET", ""),
+        tailscale_auth_key=os.getenv("TAILSCALE_AUTH_KEY", ""),
+        tailscale_hostname=os.getenv("TAILSCALE_HOSTNAME", "container-manager"),
+        tailscale_accept_dns=_get_bool("TAILSCALE_ACCEPT_DNS", False),
+        tailscale_accept_routes=_get_bool("TAILSCALE_ACCEPT_ROUTES", False),
+        tailscale_advertise_tags=_get_csv("TAILSCALE_ADVERTISE_TAGS"),
     )
 
 

@@ -10,6 +10,7 @@ app/services/auth_service.py
 app/services/docker_service.py
 app/services/system_stats.py
 app/services/terminal_service.py
+app/services/tunnel_service.py
 app/utils/__init__.py
 app/utils/http.py
 app/utils/logger.py

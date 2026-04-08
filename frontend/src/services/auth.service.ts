@@ -1,4 +1,3 @@
-import axios, { isAxiosError } from "axios";
 import type { ApiSuccess } from "../../../shared/types/api";
 import {
   LoginCredentials,
@@ -6,14 +5,52 @@ import {
 } from "../types/auth.types";
 import { storageService } from "./storage.service";
 
-// Para login, precisamos criar uma instância sem interceptor
-// que ainda não tenha token configurado
-const loginClient = axios.create({
-  timeout: 10000,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+function normalizeServerUrl(serverUrl: string): string {
+  return serverUrl.trim().replace(/\/$/, "");
+}
+
+async function requestJson<T>(
+  url: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init.headers ?? {}),
+      },
+    });
+
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      const message =
+        typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof (payload as { error?: { message?: unknown } }).error?.message ===
+          "string"
+          ? (payload as { error: { message: string } }).error.message
+          : `Request failed with status ${response.status}`;
+
+      throw new Error(message);
+    }
+
+    return payload as T;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 class AuthService {
   /**
@@ -23,14 +60,15 @@ class AuthService {
     credentials: LoginCredentials,
     serverUrl: string,
   ): Promise<AuthResponse> {
-    // Configurar URL do servidor para este request
-    loginClient.defaults.baseURL = `${serverUrl}/api`;
-
-    const response = await loginClient.post<ApiSuccess<AuthResponse>>(
-      "/auth/login",
-      credentials,
+    const baseUrl = normalizeServerUrl(serverUrl);
+    const response = await requestJson<ApiSuccess<AuthResponse>>(
+      `${baseUrl}/api/auth/login`,
+      {
+        method: "POST",
+        body: JSON.stringify(credentials),
+      },
     );
-    return response.data.data;
+    return response.data;
   }
 
   /**
@@ -39,11 +77,15 @@ class AuthService {
   async validateToken(serverUrl: string, token?: string): Promise<boolean> {
     try {
       const authToken = token || (await storageService.getToken());
-      loginClient.defaults.baseURL = `${serverUrl}/api`;
-      const response = await loginClient.get<ApiSuccess<{ valid: boolean }>>("/auth/validate", {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      });
-      return response.status === 200 && response.data.data.valid === true;
+      const baseUrl = normalizeServerUrl(serverUrl);
+      const response = await requestJson<ApiSuccess<{ valid: boolean }>>(
+        `${baseUrl}/api/auth/validate`,
+        {
+          method: "GET",
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        },
+      );
+      return response.data.valid === true;
     } catch {
       return false;
     }
@@ -56,17 +98,13 @@ class AuthService {
     serverUrl: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
-      const normalizedUrl = serverUrl.trim().replace(/\/$/, "");
-      await axios.get(`${normalizedUrl}/health`, { timeout: 5000 });
+      const normalizedUrl = normalizeServerUrl(serverUrl);
+      await requestJson<{ success: true; data: { status: string } }>(
+        `${normalizedUrl}/health`,
+      );
       return { success: true, message: "Conexão estabelecida com sucesso" };
     } catch (error) {
-      if (isAxiosError(error)) {
-        if (error.code === "ECONNREFUSED") {
-          return { success: false, message: "Servidor não encontrado" };
-        }
-        if (error.code === "ETIMEDOUT") {
-          return { success: false, message: "Timeout de conexão" };
-        }
+      if (error instanceof Error) {
         return { success: false, message: error.message || "Erro ao conectar" };
       }
       return { success: false, message: "Erro desconhecido" };

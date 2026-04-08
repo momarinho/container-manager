@@ -52,7 +52,11 @@ export const storageService = {
   // Salvar token (secure em produção)
   async saveToken(token: string): Promise<void> {
     if (useSecureStorage) {
-      await SInfo.setItem(STORAGE_KEYS.TOKEN, token, SensitiveInfoOptions);
+      try {
+        await SInfo.setItem(STORAGE_KEYS.TOKEN, token, SensitiveInfoOptions);
+      } catch (error) {
+        console.warn("Secure token storage unavailable, falling back to AsyncStorage", error);
+      }
     }
 
     await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);

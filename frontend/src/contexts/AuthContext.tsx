@@ -115,13 +115,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "LOGOUT" });
     };
 
-    if (typeof window !== "undefined") {
-      window.addEventListener("auth:unauthorized", handleUnauthorized);
+    if (
+      typeof window !== "undefined" &&
+      typeof window.addEventListener === "function"
+    ) {
+      window.addEventListener("auth:unauthorized", handleUnauthorized as any);
     }
 
     return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("auth:unauthorized", handleUnauthorized);
+      if (
+        typeof window !== "undefined" &&
+        typeof window.removeEventListener === "function"
+      ) {
+        window.removeEventListener(
+          "auth:unauthorized",
+          handleUnauthorized as any,
+        );
       }
     };
   }, []);
@@ -241,8 +250,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const requiresReauth =
       state.isAuthenticated &&
-      (!!state.server &&
-        (state.server.id !== server.id || state.server.url !== server.url));
+      !!state.server &&
+      (state.server.id !== server.id || state.server.url !== server.url);
 
     if (requiresReauth) {
       await Promise.all([
