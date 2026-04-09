@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
+import { useRouter } from "expo-router";
 import {
   Lock,
   LogIn,
@@ -21,8 +22,7 @@ import {
   Shield,
 } from "lucide-react-native";
 import { useAuth } from "../../contexts/AuthContext";
-import { LoginCredentials } from "../../types/auth.types";
-import { storageService } from "../../services/storage.service";
+import { LoginCredentials, ServerConfig } from "../../types/auth.types";
 
 const COLORS = {
   background: "#10141a",
@@ -51,20 +51,9 @@ const COLORS = {
   error: "#ffb4ab",
 };
 
-interface RecentNode {
-  id: string;
-  name: string;
-  url: string;
-  online: boolean;
-}
-
-const recentNodes: RecentNode[] = [
-  { id: "1", name: "Alpha-Node", url: "192.168.1.105", online: true },
-  { id: "2", name: "Gamma-Edge-04", url: "10.0.4.12:2375", online: false },
-];
-
 export default function LoginScreen() {
-  const { login, isLoading } = useAuth();
+  const router = useRouter();
+  const { login, isLoading, servers, server: activeServer } = useAuth();
 
   const [serverUrl, setServerUrl] = useState("http://localhost:3000");
   const [serverName, setServerName] = useState("Local Server");
@@ -73,31 +62,18 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [rememberServer, setRememberServer] = useState(true);
+  const serverConfigRoute = "/server-config" as any;
 
   useEffect(() => {
-    let isMounted = true;
+    const preferredServer = activeServer ?? servers[0];
 
-    const loadSavedServer = async () => {
-      try {
-        const savedServer = await storageService.getServer();
+    if (!preferredServer) {
+      return;
+    }
 
-        if (!isMounted || !savedServer) {
-          return;
-        }
-
-        setServerUrl(savedServer.url);
-        setServerName(savedServer.name);
-      } catch (error) {
-        console.error("Failed to load saved server:", error);
-      }
-    };
-
-    void loadSavedServer();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    setServerUrl(preferredServer.url);
+    setServerName(preferredServer.name);
+  }, [activeServer, servers]);
 
   const handleLogin = async () => {
     if (!serverUrl) {
@@ -132,9 +108,9 @@ export default function LoginScreen() {
     }
   };
 
-  const handleNodeSelect = (node: RecentNode) => {
-    setServerUrl(`http://${node.url}`);
-    setServerName(node.name);
+  const handleServerSelect = (selectedServer: ServerConfig) => {
+    setServerUrl(selectedServer.url);
+    setServerName(selectedServer.name);
   };
 
   return (
@@ -153,7 +129,9 @@ export default function LoginScreen() {
             <Terminal size={20} color={COLORS.primary} />
             <Text style={styles.appTitle}>KINETIC_INFRA</Text>
           </View>
-          <Settings size={20} color={COLORS.secondary} />
+          <TouchableOpacity onPress={() => router.push(serverConfigRoute)}>
+            <Settings size={20} color={COLORS.secondary} />
+          </TouchableOpacity>
         </View>
 
         {/* Main Content */}
@@ -280,46 +258,80 @@ export default function LoginScreen() {
                   </Text>
                 )}
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.manageServersButton}
+                onPress={() => router.push(serverConfigRoute)}
+              >
+                <Text style={styles.manageServersButtonText}>
+                  [ MANAGE_SAVED_SERVERS ]
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
-          {/* Recent Nodes Section */}
+          {/* Saved Servers Section */}
           <View style={styles.nodesSection}>
-            <Text style={styles.nodesTitle}>RECENT_NODES</Text>
-            {recentNodes.map((node) => (
-              <TouchableOpacity
-                key={node.id}
-                style={[
-                  styles.nodeCard,
-                  node.online ? styles.nodeCardOnline : styles.nodeCardOffline,
-                ]}
-                onPress={() => handleNodeSelect(node)}
-              >
+            <View style={styles.nodesHeader}>
+              <Text style={styles.nodesTitle}>SAVED_SERVERS</Text>
+              <Text style={styles.nodesCount}>
+                {String(servers.length).padStart(2, "0")}
+              </Text>
+            </View>
+
+            {servers.length === 0 ? (
+              <View style={[styles.nodeCard, styles.nodeCardOffline]}>
                 <View style={styles.nodeInfo}>
-                  <Text style={styles.nodeName}>{node.name}</Text>
-                  <Text style={styles.nodeUrl}>{node.url}</Text>
-                </View>
-                <View style={styles.nodeStatus}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      node.online && styles.statusDotOnline,
-                      node.online && styles.statusDotPulse,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      node.online
-                        ? styles.statusTextOnline
-                        : styles.statusTextOffline,
-                    ]}
-                  >
-                    {node.online ? "ONLINE" : "OFFLINE"}
+                  <Text style={styles.nodeName}>Nenhum servidor salvo</Text>
+                  <Text style={styles.nodeUrl}>
+                    Abra o registro para adicionar e validar endpoints.
                   </Text>
                 </View>
-              </TouchableOpacity>
-            ))}
+              </View>
+            ) : (
+              servers.map((savedServer) => {
+                const isSelected = serverUrl === savedServer.url;
+                const isActive = activeServer?.id === savedServer.id;
+
+                return (
+                  <TouchableOpacity
+                    key={savedServer.id}
+                    style={[
+                      styles.nodeCard,
+                      isSelected ? styles.nodeCardOnline : styles.nodeCardOffline,
+                    ]}
+                    onPress={() => handleServerSelect(savedServer)}
+                  >
+                    <View style={styles.nodeInfo}>
+                      <Text style={styles.nodeName}>{savedServer.name}</Text>
+                      <Text style={styles.nodeUrl}>{savedServer.url}</Text>
+                    </View>
+                    <View style={styles.nodeStatus}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          isSelected && styles.statusDotOnline,
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.statusText,
+                          isSelected
+                            ? styles.statusTextOnline
+                            : styles.statusTextOffline,
+                        ]}
+                      >
+                        {isActive
+                          ? "ACTIVE"
+                          : isSelected
+                            ? "SELECTED"
+                            : "SAVED"}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
           </View>
         </View>
 
@@ -485,8 +497,28 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     textTransform: "uppercase",
   },
+  manageServersButton: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: COLORS.outlineVariant,
+    backgroundColor: COLORS.surfaceContainerLow,
+  },
+  manageServersButtonText: {
+    color: COLORS.secondary,
+    fontSize: 12,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+  },
   nodesSection: {
     gap: 16,
+  },
+  nodesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   nodesTitle: {
     fontSize: 10,
@@ -494,6 +526,12 @@ const styles = StyleSheet.create({
     color: COLORS.secondary,
     letterSpacing: 2,
     textTransform: "uppercase",
+  },
+  nodesCount: {
+    fontSize: 10,
+    color: COLORS.outline,
+    fontWeight: "bold",
+    letterSpacing: 1.2,
   },
   nodeCard: {
     backgroundColor: COLORS.surfaceContainerLow,
@@ -537,9 +575,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.tertiary,
     boxShadow: "0px 0px 8px rgba(103, 223, 112, 0.6)",
     elevation: 4,
-  },
-  statusDotPulse: {
-    // Pulse animation would require Animated API
   },
   statusText: {
     fontSize: 9,

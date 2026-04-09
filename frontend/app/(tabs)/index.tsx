@@ -72,13 +72,39 @@ export default function DashboardScreen() {
 
         setLoadError(null);
 
-        const [statsData, containersData] = await Promise.all([
+        const [statsResult, containersResult] = await Promise.allSettled([
           systemService.getStats(),
           containersService.list({ all: true }),
         ]);
 
-        setStats(statsData);
-        setContainers(containersData);
+        if (statsResult.status === "fulfilled") {
+          setStats(statsResult.value);
+        } else {
+          console.error("Error loading dashboard stats:", statsResult.reason);
+          setStats(null);
+        }
+
+        if (containersResult.status === "fulfilled") {
+          setContainers(containersResult.value);
+        } else {
+          console.error(
+            "Error loading dashboard containers:",
+            containersResult.reason,
+          );
+        }
+
+        if (
+          statsResult.status === "rejected" &&
+          containersResult.status === "rejected"
+        ) {
+          setLoadError("Falha ao carregar os dados do ambiente atual.");
+        } else if (statsResult.status === "rejected") {
+          setLoadError(
+            "Metricas indisponiveis no momento. Exibindo containers carregados.",
+          );
+        } else if (containersResult.status === "rejected") {
+          setLoadError("Falha ao carregar a lista de containers.");
+        }
       } catch (error) {
         console.error("Error loading dashboard data:", error);
         setLoadError("Falha ao carregar os dados do ambiente atual.");

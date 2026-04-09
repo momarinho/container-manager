@@ -209,27 +209,23 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
         }
 
         setLoadError(null);
+        setStats(null);
+        setStatsUnavailable(false);
 
-        const [detailsResult, statsResult] = await Promise.allSettled([
-          containersService.get(containerId),
-          containersService.getStats(containerId),
-        ]);
+        const detailsResult = await containersService.get(containerId);
+        setDetails(detailsResult);
+        setLoading(false);
 
-        if (detailsResult.status === "rejected") {
-          throw detailsResult.reason;
-        }
-
-        setDetails(detailsResult.value);
-
-        if (statsResult.status === "fulfilled") {
-          setStats(statsResult.value);
-          setStatsUnavailable(false);
-        } else {
-          setStats(null);
+        try {
+          const statsResult = await containersService.getStats(containerId);
+          setStats(statsResult);
+        } catch (statsError) {
+          console.error("Error loading container stats:", statsError);
           setStatsUnavailable(true);
         }
       } catch (error) {
         console.error("Error loading container details:", error);
+        setDetails(null);
         setLoadError("Nao foi possivel carregar os detalhes do container.");
       } finally {
         setLoading(false);

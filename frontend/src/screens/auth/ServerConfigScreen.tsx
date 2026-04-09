@@ -50,6 +50,16 @@ export default function ServerConfigScreen() {
       }
 
       const normalizedUrl = newServerUrl.trim().replace(/\/$/, '');
+      const duplicateServer = servers.find(
+        (server) =>
+          server.url.trim().replace(/\/$/, '') === normalizedUrl &&
+          server.id !== editingServerId
+      );
+
+      if (duplicateServer) {
+        Alert.alert('Erro', `Ja existe um endpoint salvo para ${duplicateServer.name}.`);
+        return;
+      }
 
       const nextServers = editingServerId
         ? servers.map((server) =>

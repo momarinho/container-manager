@@ -3,7 +3,7 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
@@ -31,13 +31,28 @@ function LoadingScreen() {
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const segments = useSegments();
 
   useEffect(() => {
-    if (!isLoading) {
-      const route = isAuthenticated ? "/(tabs)" : "/login";
-      router.replace(route);
+    if (isLoading) {
+      return;
     }
-  }, [isLoading, isAuthenticated, router]);
+
+    const currentRoot = segments[0] as string | undefined;
+    const isPublicRoute =
+      currentRoot === "login" || currentRoot === "server-config";
+
+    if (isAuthenticated) {
+      if (isPublicRoute || !currentRoot) {
+        router.replace("/(tabs)");
+      }
+      return;
+    }
+
+    if (!isPublicRoute) {
+      router.replace("/login");
+    }
+  }, [isLoading, isAuthenticated, router, segments]);
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -46,6 +61,7 @@ function AppContent() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="server-config" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="container/[id]"

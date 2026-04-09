@@ -422,6 +422,19 @@ async def get_container_stats(request: Request, container_id: str):
         )
 
     try:
+        container_state = await asyncio.to_thread(
+            docker_service.inspect_container_state, container_id
+        )
+        current_status = str(container_state.get("Status", "")).lower()
+
+        if current_status != "running":
+            return error_response(
+                409,
+                "CONTAINER_STATS_UNAVAILABLE",
+                "Container stats unavailable for current state",
+                {"state": current_status or "unknown"},
+            )
+
         stats = await asyncio.to_thread(
             docker_service.get_container_stats, container_id
         )
