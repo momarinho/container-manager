@@ -30,6 +30,99 @@ class DockerService:
         details = self.api.inspect_container(container_id)
         return self._transform_container_details(details)
 
+    def validate_image(self, image: str) -> dict[str, Any]:
+        normalized_image = image.strip()
+        if not normalized_image:
+            raise ValueError("Image name is required")
+
+        try:
+            self.api.inspect_image(normalized_image)
+            return {
+                "image": normalized_image,
+                "available": True,
+                "source": "local",
+                "requiresPull": False,
+            }
+        except docker.errors.ImageNotFound:
+            pass
+        except docker.errors.APIError as exc:
+            if getattr(exc, "status_code", None) != 404:
+                raise
+
+        try:
+            self.api.inspect_distribution(normalized_image)
+            return {
+                "image": normalized_image,
+                "available": True,
+                "source": "registry",
+                "requiresPull": True,
+            }
+        except docker.errors.APIError as exc:
+            if getattr(exc, "status_code", None) == 404:
+                return {
+                    "image": normalized_image,
+                    "available": False,
+                    "source": "unavailable",
+                    "requiresPull": False,
+                }
+            raise
+
+    def create_container(
+        self,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        image = str(payload.get("image", "")).strip()
+        name = str(payload.get("name", "")).strip() or None
+        command = payload.get("command") or None
+        entrypoint = payload.get("entrypoint") or None
+        env = payload.get("env") or None
+        ports_payload = payload.get("ports") or []
+        volumes_payload = payload.get("volumes") or []
+        restart_policy_name = payload.get("restartPolicy") or "unless-stopped"
+        restart_max_retries = int(payload.get("restartMaxRetries") or 0)
+        working_dir = payload.get("workingDir") or None
+        auto_start = bool(payload.get("autoStart", True))
+        pull_image = bool(payload.get("pullImage", True))
+        labels = payload.get("labels") or {}
+
+        image_result = self._ensure_image(image, pull_image)
+        port_bindings = self._build_port_bindings(ports_payload)
+        volume_bindings = self._build_volume_bindings(volumes_payload)
+        restart_policy = {
+            "Name": restart_policy_name,
+            "MaximumRetryCount": restart_max_retries,
+        }
+
+        container = self.client.containers.create(
+            image=image_result["image"],
+            name=name,
+            command=command,
+            detach=True,
+            entrypoint=entrypoint,
+            environment=env,
+            ports=port_bindings or None,
+            volumes=volume_bindings or None,
+            working_dir=working_dir,
+            restart_policy=restart_policy,
+            labels=labels,
+        )
+
+        started = False
+        if auto_start:
+            container.start()
+            started = True
+
+        container.reload()
+        details = self.api.inspect_container(container.id)
+
+        return {
+            "container": self._transform_container_details(details),
+            "started": started,
+            "imagePulled": image_result["pulled"],
+            "imageSource": image_result["source"],
+            "pullSteps": image_result["pull_steps"],
+        }
+
     def start_container(self, container_id: str) -> None:
         self.api.start(container_id)
 
@@ -130,6 +223,87 @@ class DockerService:
     def inspect_container_state(self, container_id: str) -> dict[str, Any]:
         details = self.api.inspect_container(container_id)
         return details.get("State", {})
+
+    def _ensure_image(self, image: str, pull_image: bool) -> dict[str, Any]:
+        normalized_image = image.strip()
+        if not normalized_image:
+            raise ValueError("Image name is required")
+
+        try:
+            self.api.inspect_image(normalized_image)
+            return {
+                "image": normalized_image,
+                "source": "local",
+                "pulled": False,
+                "pull_steps": [],
+            }
+        except docker.errors.ImageNotFound:
+            pass
+        except docker.errors.APIError as exc:
+            if getattr(exc, "status_code", None) != 404:
+                raise
+
+        if not pull_image:
+            raise ValueError("Image is not available locally")
+
+        pull_steps: list[dict[str, str]] = []
+        for raw_event in self.api.pull(normalized_image, stream=True, decode=True):
+            status = str(raw_event.get("status") or "").strip()
+            progress = str(raw_event.get("progress") or "").strip() or None
+            event_id = str(raw_event.get("id") or "").strip() or None
+            error_message = str(raw_event.get("error") or "").strip() or None
+
+            if error_message:
+                raise ValueError(error_message)
+
+            if status:
+                detail_parts = [part for part in [event_id, progress] if part]
+                pull_steps.append(
+                    {
+                        "status": status,
+                        "detail": " ".join(detail_parts).strip(),
+                    }
+                )
+
+        self.api.inspect_image(normalized_image)
+        return {
+            "image": normalized_image,
+            "source": "registry",
+            "pulled": True,
+            "pull_steps": pull_steps[-30:],
+        }
+
+    @staticmethod
+    def _build_port_bindings(ports_payload: list[dict[str, Any]]) -> dict[str, Any]:
+        bindings: dict[str, Any] = {}
+        for port in ports_payload:
+            container_port = int(port["containerPort"])
+            host_port = port.get("hostPort")
+            protocol = str(port.get("protocol") or "tcp").lower()
+            host_ip = port.get("hostIp")
+            port_key = f"{container_port}/{protocol}"
+
+            if host_port is None:
+                bindings[port_key] = None
+                continue
+
+            if host_ip:
+                bindings[port_key] = (str(host_ip), int(host_port))
+            else:
+                bindings[port_key] = int(host_port)
+        return bindings
+
+    @staticmethod
+    def _build_volume_bindings(
+        volumes_payload: list[dict[str, Any]],
+    ) -> dict[str, dict[str, str]]:
+        bindings: dict[str, dict[str, str]] = {}
+        for volume in volumes_payload:
+            bindings[str(volume["source"])] = {
+                "bind": str(volume["target"]),
+                "mode": "ro" if volume.get("readOnly") else "rw",
+            }
+        return bindings
 
     def _transform_container(self, docker_container: dict[str, Any]) -> dict[str, Any]:
         return {

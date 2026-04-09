@@ -1,6 +1,13 @@
 import { apiClient } from './apiClient';
 import type { ApiSuccess } from '../../../shared/types/api';
-import type { Container, ContainerDetails, ContainerStats } from '../types/container.types';
+import type {
+  Container,
+  ContainerDetails,
+  ContainerStats,
+  CreateContainerRequest,
+  CreateContainerResponse,
+  ImageValidationResponse,
+} from '../types/container.types';
 
 export const containersService = {
   /**
@@ -74,6 +81,22 @@ export const containersService = {
    */
   async getStats(id: string): Promise<ContainerStats> {
     const response = await apiClient.get<ApiSuccess<ContainerStats>>(`/containers/${id}/stats`);
+    return response.data.data;
+  },
+
+  async validateImage(image: string): Promise<ImageValidationResponse> {
+    const response = await apiClient.post<ApiSuccess<ImageValidationResponse>>(
+      '/containers/validate-image',
+      { image },
+    );
+    return response.data.data;
+  },
+
+  async create(payload: CreateContainerRequest): Promise<CreateContainerResponse> {
+    const response = await apiClient.post<ApiSuccess<CreateContainerResponse>>(
+      '/containers',
+      payload,
+    );
     return response.data.data;
   },
 };

@@ -15,6 +15,7 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 import {
   LogOut,
+  Plus,
   Play,
   RotateCw,
   Search as SearchIcon,
@@ -272,6 +273,12 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push("/container/create" as any)}
+          >
+            <Plus size={20} color={Colors.primary} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
             <LogOut size={20} color={Colors.outline} />
           </TouchableOpacity>

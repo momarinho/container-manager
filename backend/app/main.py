@@ -7,6 +7,7 @@ from collections import defaultdict, deque
 from threading import Event
 from typing import Any
 
+import docker
 from fastapi import Body, FastAPI, HTTPException, Request, Response, WebSocket
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +16,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.websockets import WebSocketDisconnect
 
 from app.config import config
-from app.models import ExecRequest, LoginCredentials, TunnelConnectRequest
+from app.models import (
+    CreateContainerRequest,
+    ExecRequest,
+    LoginCredentials,
+    TunnelConnectRequest,
+    ValidateImageRequest,
+)
 from app.security import get_bearer_token, utc_timestamp, verify_jwt
 from app.services.auth_service import auth_service
 from app.services.docker_service import docker_service
@@ -277,6 +284,65 @@ async def list_containers(
         logger.exception("Failed to list containers")
         return error_response(
             500, "CONTAINERS_LIST_FAILED", "Failed to list containers"
+        )
+
+
+@app.post("/api/containers/validate-image")
+async def validate_container_image(request: Request, payload: ValidateImageRequest):
+    try:
+        require_http_user(request)
+    except HTTPException as exc:
+        return (
+            _unauthorized_missing()
+            if exc.detail == "Missing token"
+            else _unauthorized_invalid()
+        )
+
+    try:
+        result = await asyncio.to_thread(docker_service.validate_image, payload.image)
+        return success_payload(result)
+    except ValueError as exc:
+        return error_response(400, "IMAGE_VALIDATION_FAILED", str(exc))
+    except Exception:
+        logger.exception("Failed to validate image %s", payload.image)
+        return error_response(
+            500, "IMAGE_VALIDATION_FAILED", "Failed to validate image"
+        )
+
+
+@app.post("/api/containers")
+async def create_container(request: Request, payload: CreateContainerRequest):
+    try:
+        require_http_user(request)
+    except HTTPException as exc:
+        return (
+            _unauthorized_missing()
+            if exc.detail == "Missing token"
+            else _unauthorized_invalid()
+        )
+
+    try:
+        created = await asyncio.to_thread(
+            docker_service.create_container,
+            payload.model_dump(by_alias=True),
+        )
+        return success_payload(created)
+    except ValueError as exc:
+        return error_response(400, "CONTAINER_CREATE_INVALID", str(exc))
+    except docker.errors.APIError as exc:
+        explanation = getattr(exc, "explanation", None)
+        details = {"message": explanation} if explanation else None
+        logger.exception("Docker API failed while creating container")
+        return error_response(
+            500,
+            "CONTAINER_CREATE_FAILED",
+            "Failed to create container",
+            details,
+        )
+    except Exception:
+        logger.exception("Failed to create container")
+        return error_response(
+            500, "CONTAINER_CREATE_FAILED", "Failed to create container"
         )
 
 

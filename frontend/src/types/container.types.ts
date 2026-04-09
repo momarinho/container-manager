@@ -81,3 +81,52 @@ export interface ContainerStats {
   blockRead: number;
   blockWrite: number;
 }
+
+export interface CreateContainerPort {
+  containerPort: number;
+  hostPort?: number;
+  protocol: 'tcp' | 'udp';
+  hostIp?: string;
+}
+
+export interface CreateContainerVolume {
+  source: string;
+  target: string;
+  readOnly: boolean;
+}
+
+export interface CreateContainerRequest {
+  name?: string;
+  image: string;
+  command: string[];
+  entrypoint: string[];
+  env: Record<string, string>;
+  ports: CreateContainerPort[];
+  volumes: CreateContainerVolume[];
+  restartPolicy: 'no' | 'always' | 'unless-stopped' | 'on-failure';
+  restartMaxRetries: number;
+  workingDir?: string;
+  autoStart: boolean;
+  pullImage: boolean;
+  labels: Record<string, string>;
+}
+
+export interface PullStep {
+  status: string;
+  detail?: string;
+}
+
+export interface CreateContainerResponse {
+  container: ContainerDetails;
+  started: boolean;
+  imagePulled: boolean;
+  imageSource: 'local' | 'registry';
+  pullSteps: PullStep[];
+}
+
+export interface ImageValidationResponse {
+  image: string;
+  available: boolean;
+  source: 'local' | 'registry' | 'unavailable';
+  requiresPull: boolean;
+}
