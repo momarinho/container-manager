@@ -64,58 +64,50 @@ export default function DashboardScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const hasLoadedOnFocusRef = useRef(false);
 
-  const loadData = useCallback(
-    async (showSpinner: boolean) => {
-      try {
-        if (showSpinner) {
-          setLoading(true);
-        }
-
-        setLoadError(null);
-
-        const [statsResult, containersResult] = await Promise.allSettled([
-          systemService.getStats(),
-          containersService.list({ all: true }),
-        ]);
-
-        if (statsResult.status === "fulfilled") {
-          setStats(statsResult.value);
-        } else {
-          console.error("Error loading dashboard stats:", statsResult.reason);
-          setStats(null);
-        }
-
-        if (containersResult.status === "fulfilled") {
-          setContainers(containersResult.value);
-        } else {
-          console.error(
-            "Error loading dashboard containers:",
-            containersResult.reason,
-          );
-        }
-
-        if (
-          statsResult.status === "rejected" &&
-          containersResult.status === "rejected"
-        ) {
-          setLoadError("Falha ao carregar os dados do ambiente atual.");
-        } else if (statsResult.status === "rejected") {
-          setLoadError(
-            "Metricas indisponiveis no momento. Exibindo containers carregados.",
-          );
-        } else if (containersResult.status === "rejected") {
-          setLoadError("Falha ao carregar a lista de containers.");
-        }
-      } catch (error) {
-        console.error("Error loading dashboard data:", error);
-        setLoadError("Falha ao carregar os dados do ambiente atual.");
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
+  const loadData = useCallback(async (showSpinner: boolean) => {
+    try {
+      if (showSpinner) {
+        setLoading(true);
       }
-    },
-    [],
-  );
+
+      setLoadError(null);
+
+      let statsFailed = false;
+      try {
+        const statsData = await systemService.getStats();
+        setStats(statsData);
+      } catch (error) {
+        console.error("Error loading dashboard stats:", error);
+        setStats(null);
+        statsFailed = true;
+      }
+
+      let containersFailed = false;
+      try {
+        const containersData = await containersService.list({ all: true });
+        setContainers(containersData);
+      } catch (error) {
+        console.error("Error loading dashboard containers:", error);
+        containersFailed = true;
+      }
+
+      if (statsFailed && containersFailed) {
+        setLoadError("Falha ao carregar os dados do ambiente atual.");
+      } else if (statsFailed) {
+        setLoadError(
+          "Metricas indisponiveis no momento. Exibindo containers carregados.",
+        );
+      } else if (containersFailed) {
+        setLoadError("Falha ao carregar a lista de containers.");
+      }
+    } catch (error) {
+      console.error("Error loading dashboard data:", error);
+      setLoadError("Falha ao carregar os dados do ambiente atual.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -200,7 +192,8 @@ export default function DashboardScreen() {
       return;
     }
 
-    const title = action === "restart" ? "Reiniciar container" : "Parar container";
+    const title =
+      action === "restart" ? "Reiniciar container" : "Parar container";
     const message =
       action === "restart"
         ? `Deseja reiniciar "${containerName}"?`
@@ -314,7 +307,9 @@ export default function DashboardScreen() {
         {stats ? (
           <>
             <View style={styles.autoRefreshContainer}>
-              <Text style={styles.autoRefreshLabel}>Atualização automática</Text>
+              <Text style={styles.autoRefreshLabel}>
+                Atualização automática
+              </Text>
               <Switch
                 value={autoRefresh}
                 onValueChange={setAutoRefresh}
@@ -420,7 +415,9 @@ export default function DashboardScreen() {
                     style={[
                       styles.statusDot,
                       {
-                        backgroundColor: getContainerStatusColor(container.state),
+                        backgroundColor: getContainerStatusColor(
+                          container.state,
+                        ),
                       },
                     ]}
                   />
@@ -438,8 +435,12 @@ export default function DashboardScreen() {
                 </View>
 
                 <View style={styles.cardMetrics}>
-                  <Text style={styles.cardMetric}>Image: {container.image}</Text>
-                  <Text style={styles.cardMetric}>State: {container.status}</Text>
+                  <Text style={styles.cardMetric}>
+                    Image: {container.image}
+                  </Text>
+                  <Text style={styles.cardMetric}>
+                    State: {container.status}
+                  </Text>
                 </View>
 
                 <View style={styles.cardActions}>

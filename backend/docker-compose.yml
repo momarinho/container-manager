@@ -1,6 +1,7 @@
 services:
   backend:
     image: ${IMAGE_NAME:-ghcr.io/containermaster/backend}:${IMAGE_TAG:-latest}
+    build: .
     container_name: containermaster-backend
     pull_policy: if_not_present
     restart: unless-stopped

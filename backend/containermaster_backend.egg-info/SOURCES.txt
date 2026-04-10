@@ -12,6 +12,7 @@ app/services/system_stats.py
 app/services/terminal_service.py
 app/services/tunnel_service.py
 app/utils/__init__.py
+app/utils/errors.py
 app/utils/http.py
 app/utils/logger.py
 containermaster_backend.egg-info/PKG-INFO
@@ -19,3 +20,6 @@ containermaster_backend.egg-info/SOURCES.txt
 containermaster_backend.egg-info/dependency_links.txt
 containermaster_backend.egg-info/requires.txt
 containermaster_backend.egg-info/top_level.txt
+tests/test_auth_service.py
+tests/test_http_utils.py
+tests/test_main_api.py

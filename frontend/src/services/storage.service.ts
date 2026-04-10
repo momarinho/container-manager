@@ -12,7 +12,7 @@ const STORAGE_KEYS = {
 
 // Para iOS/Android - usa Keychain/Keystore
 // Para Web/Expo Go - usa AsyncStorage (menos seguro)
-const useSecureStorage = __DEV__ ? false : true;
+const useSecureStorage = false;
 
 const SensitiveInfoOptions = {
   sharedPreferencesName: "ContainerMaster",
@@ -55,7 +55,10 @@ export const storageService = {
       try {
         await SInfo.setItem(STORAGE_KEYS.TOKEN, token, SensitiveInfoOptions);
       } catch (error) {
-        console.warn("Secure token storage unavailable, falling back to AsyncStorage", error);
+        console.warn(
+          "Secure token storage unavailable, falling back to AsyncStorage",
+          error,
+        );
       }
     }
 
@@ -102,7 +105,11 @@ export const storageService = {
       this.getActiveServerId(),
     ]);
 
-    return servers.find((server) => server.id === activeServerId) ?? servers[0] ?? null;
+    return (
+      servers.find((server) => server.id === activeServerId) ??
+      servers[0] ??
+      null
+    );
   },
 
   async removeServer(): Promise<void> {
@@ -113,7 +120,10 @@ export const storageService = {
     await AsyncStorage.setItem(STORAGE_KEYS.SERVERS, JSON.stringify(servers));
 
     if (servers.length > 0) {
-      await AsyncStorage.setItem(STORAGE_KEYS.SERVER, JSON.stringify(servers[0]));
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.SERVER,
+        JSON.stringify(servers[0]),
+      );
     } else {
       await AsyncStorage.removeItem(STORAGE_KEYS.SERVER);
     }
@@ -128,7 +138,9 @@ export const storageService = {
   },
 
   async getActiveServerId(): Promise<string | null> {
-    const activeServerId = await AsyncStorage.getItem(STORAGE_KEYS.ACTIVE_SERVER_ID);
+    const activeServerId = await AsyncStorage.getItem(
+      STORAGE_KEYS.ACTIVE_SERVER_ID,
+    );
 
     if (activeServerId) {
       return activeServerId;
@@ -166,9 +178,6 @@ export const storageService = {
 
   // Limpar apenas dados autenticados (logout)
   async clearAll(): Promise<void> {
-    await Promise.all([
-      this.removeToken(),
-      this.removeUser(),
-    ]);
+    await Promise.all([this.removeToken(), this.removeUser()]);
   },
 };

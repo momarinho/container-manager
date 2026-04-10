@@ -8,6 +8,7 @@ from threading import Event
 from typing import Any
 
 import docker
+from docker.errors import APIError
 from fastapi import Body, FastAPI, Request, Response, WebSocket
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,10 +37,16 @@ from app.utils.logger import logger
 API_TAGS = [
     {"name": "Health", "description": "Healthcheck and uptime information."},
     {"name": "Auth", "description": "Authentication and token validation endpoints."},
-    {"name": "Containers", "description": "Container lifecycle and execution operations."},
+    {
+        "name": "Containers",
+        "description": "Container lifecycle and execution operations.",
+    },
     {"name": "System", "description": "Host system metrics and runtime information."},
     {"name": "Tunnel", "description": "Tunnel provider status and control endpoints."},
-    {"name": "WebSockets", "description": "Real-time channels for stats, logs, tunnel and terminal."},
+    {
+        "name": "WebSockets",
+        "description": "Real-time channels for stats, logs, tunnel and terminal.",
+    },
 ]
 
 app = FastAPI(
@@ -318,7 +325,7 @@ async def create_container(request: Request, payload: CreateContainerRequest):
         return success_payload(created)
     except ValueError as exc:
         return error_response(400, "CONTAINER_CREATE_INVALID", str(exc))
-    except docker.errors.APIError as exc:
+    except APIError as exc:
         explanation = getattr(exc, "explanation", None)
         details = {"message": explanation} if explanation else None
         logger.exception("Docker API failed while creating container")
