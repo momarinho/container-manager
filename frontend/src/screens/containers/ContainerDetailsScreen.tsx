@@ -1,12 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import * as FileSystem from "expo-file-system/legacy";
 import {
   ActivityIndicator,
   Alert,
+  Clipboard,
   Platform,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -19,16 +29,22 @@ import {
   X,
 } from "lucide-react-native";
 import { Colors } from "../../../constants/Colors";
-import ActionFeedbackBanner from "../../components/ActionFeedbackBanner";
+import ActionFeedbackBanner, {
+  type ActionFeedback,
+} from "../../components/ActionFeedbackBanner";
 import { useContainerAction } from "../../hooks/useContainerAction";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { containersService } from "../../services/containers.service";
 import type { ContainerDetails, ContainerStats } from "../../types/container.types";
 
 const monoFont = Platform.OS === "ios" ? "Menlo" : "monospace";
+const MAX_LOG_LINES = 400;
 
 type ContainerAction = "start" | "stop" | "restart" | "pause" | "unpause";
 type ContainerView = "overview" | "logs" | "actions";
+type LogFilter = "all" | "error" | "warn" | "info";
+type LogLevel = Exclude<LogFilter, "all">;
+type ExportFormat = "txt" | "json";
 
 interface Props {
   containerId: string;
@@ -40,6 +56,20 @@ interface QuickAction {
   tone: "primary" | "danger" | "success";
   description: string;
 }
+
+interface LogEntry {
+  id: string;
+  level: LogLevel;
+  message: string;
+  receivedAt: string;
+}
+
+const LOG_FILTERS: { value: LogFilter; label: string }[] = [
+  { value: "all", label: "ALL" },
+  { value: "error", label: "ERROR" },
+  { value: "warn", label: "WARN" },
+  { value: "info", label: "INFO" },
+];
 
 function formatBytes(value: number): string {
   if (!value) {
@@ -149,6 +179,124 @@ function buildQuickActions(state: string): QuickAction[] {
   ];
 }
 
+function detectLogLevel(message: string): LogLevel {
+  if (/\b(error|err|fatal|panic|failed|exception|critical)\b/i.test(message)) {
+    return "error";
+  }
+
+  if (/\b(warn|warning|deprecated|retrying)\b/i.test(message)) {
+    return "warn";
+  }
+
+  return "info";
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getHighlightedParts(message: string, query: string) {
+  if (!query) {
+    return [{ value: message, isMatch: false }];
+  }
+
+  const pattern = new RegExp(`(${escapeRegExp(query)})`, "ig");
+
+  return message
+    .split(pattern)
+    .filter((part) => part.length > 0)
+    .map((part) => ({
+      value: part,
+      isMatch: part.toLowerCase() === query.toLowerCase(),
+    }));
+}
+
+function buildPlainLogs(entries: LogEntry[]): string {
+  return entries.map((entry) => entry.message).join("\n");
+}
+
+function buildLogExport(
+  entries: LogEntry[],
+  format: ExportFormat,
+  metadata: {
+    containerId: string;
+    containerName: string;
+    searchQuery: string;
+    filter: LogFilter;
+  },
+): string {
+  if (format === "json") {
+    return JSON.stringify(
+      {
+        containerId: metadata.containerId,
+        containerName: metadata.containerName,
+        generatedAt: new Date().toISOString(),
+        filter: metadata.filter,
+        searchQuery: metadata.searchQuery || null,
+        count: entries.length,
+        logs: entries.map((entry) => ({
+          id: entry.id,
+          level: entry.level,
+          receivedAt: entry.receivedAt,
+          message: entry.message,
+        })),
+      },
+      null,
+      2,
+    );
+  }
+
+  const header = [
+    `Container: ${metadata.containerName}`,
+    `Container ID: ${metadata.containerId}`,
+    `Generated At: ${new Date().toISOString()}`,
+    `Filter: ${metadata.filter.toUpperCase()}`,
+    `Search: ${metadata.searchQuery || "none"}`,
+    `Count: ${entries.length}`,
+    "",
+  ];
+
+  const lines = entries.map(
+    (entry) =>
+      `[${entry.receivedAt}] [${entry.level.toUpperCase()}] ${entry.message}`,
+  );
+
+  return [...header, ...lines].join("\n");
+}
+
+function sanitizeFileSegment(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function buildLogFilename(name: string, format: ExportFormat): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safeName = sanitizeFileSegment(name) || "container";
+
+  return `${safeName}-logs-${timestamp}.${format}`;
+}
+
+function downloadLogsFile(
+  content: string,
+  filename: string,
+  mimeType: string,
+): void {
+  if (typeof document === "undefined" || typeof URL === "undefined") {
+    throw new Error("Exportacao indisponivel neste ambiente.");
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
 function Section({
   title,
   children,
@@ -199,7 +347,11 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statsUnavailable, setStatsUnavailable] = useState(false);
   const [activeView, setActiveView] = useState<ContainerView>("overview");
-  const [logLines, setLogLines] = useState<string[]>([]);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [logFilter, setLogFilter] = useState<LogFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [logsFeedback, setLogsFeedback] = useState<ActionFeedback | null>(null);
+  const logSequence = useRef(0);
 
   const loadData = useCallback(
     async (showSpinner: boolean) => {
@@ -246,8 +398,24 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
   }, [containerId, loadData]);
 
   useEffect(() => {
-    setLogLines([]);
+    logSequence.current = 0;
+    setLogEntries([]);
+    setLogFilter("all");
+    setSearchQuery("");
+    setLogsFeedback(null);
   }, [containerId]);
+
+  useEffect(() => {
+    if (!logsFeedback) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      setLogsFeedback(null);
+    }, 2500);
+
+    return () => clearTimeout(timeout);
+  }, [logsFeedback]);
 
   const logsEnabled = Boolean(containerId) && activeView === "logs";
   const { isConnected: logsConnected, error: logsError } = useWebSocket<string>(
@@ -262,12 +430,23 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
         return;
       }
 
-      setLogLines((current) => [...current, ...lines].slice(-200));
+      const receivedAt = new Date().toISOString();
+      const entries = lines.map((message) => ({
+        id: `${containerId}-${logSequence.current++}`,
+        level: detectLogLevel(message),
+        message,
+        receivedAt,
+      }));
+
+      setLogEntries((current) =>
+        [...current, ...entries].slice(-MAX_LOG_LINES),
+      );
     },
     logsEnabled,
   );
 
   const primaryName = details?.names[0]?.replace(/^\//, "") || "Unnamed container";
+  const trimmedSearchQuery = searchQuery.trim();
   const quickActions = useMemo(
     () => buildQuickActions(details?.state ?? "exited"),
     [details?.state],
@@ -297,6 +476,126 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
     setRefreshing(true);
     await loadData(false);
   };
+
+  const logCounts = useMemo(
+    () =>
+      logEntries.reduce<Record<LogFilter, number>>(
+        (counts, entry) => {
+          counts.all += 1;
+          counts[entry.level] += 1;
+          return counts;
+        },
+        { all: 0, error: 0, warn: 0, info: 0 },
+      ),
+    [logEntries],
+  );
+
+  const visibleLogEntries = useMemo(() => {
+    const normalizedQuery = trimmedSearchQuery.toLowerCase();
+
+    return logEntries.filter((entry) => {
+      const matchesFilter = logFilter === "all" || entry.level === logFilter;
+      const matchesSearch =
+        normalizedQuery.length === 0 ||
+        entry.message.toLowerCase().includes(normalizedQuery);
+
+      return matchesFilter && matchesSearch;
+    });
+  }, [logEntries, logFilter, trimmedSearchQuery]);
+
+  const setLogsBanner = useCallback(
+    (tone: ActionFeedback["tone"], message: string) => {
+      setLogsFeedback({ tone, message });
+    },
+    [],
+  );
+
+  const handleCopyLogs = useCallback(async () => {
+    if (visibleLogEntries.length === 0) {
+      setLogsBanner("error", "Nenhuma linha visivel para copiar.");
+      return;
+    }
+
+    try {
+      Clipboard.setString(buildPlainLogs(visibleLogEntries));
+      setLogsBanner(
+        "success",
+        `${visibleLogEntries.length} linhas copiadas para a area de transferencia.`,
+      );
+    } catch (error) {
+      console.error("Error copying logs:", error);
+      setLogsBanner("error", "Nao foi possivel copiar os logs.");
+    }
+  }, [setLogsBanner, visibleLogEntries]);
+
+  const handleExportLogs = useCallback(
+    async (format: ExportFormat) => {
+      if (visibleLogEntries.length === 0) {
+        setLogsBanner("error", "Nenhuma linha visivel para exportar.");
+        return;
+      }
+
+      try {
+        const filename = buildLogFilename(primaryName, format);
+        const content = buildLogExport(visibleLogEntries, format, {
+          containerId,
+          containerName: primaryName,
+          searchQuery: trimmedSearchQuery,
+          filter: logFilter,
+        });
+
+        if (Platform.OS === "web") {
+          downloadLogsFile(
+            content,
+            filename,
+            format === "json" ? "application/json" : "text/plain",
+          );
+          setLogsBanner(
+            "success",
+            `Exportacao ${format.toUpperCase()} iniciada.`,
+          );
+          return;
+        }
+
+        const baseDirectory =
+          FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+
+        if (!baseDirectory) {
+          throw new Error("No writable directory available.");
+        }
+
+        const fileUri = `${baseDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(fileUri, content);
+
+        const shareUri =
+          Platform.OS === "android"
+            ? await FileSystem.getContentUriAsync(fileUri)
+            : fileUri;
+
+        await Share.share({
+          title: filename,
+          url: shareUri,
+          message: `Export ${format.toUpperCase()} de logs: ${primaryName}`,
+        });
+
+        setLogsBanner(
+          "success",
+          `Arquivo ${format.toUpperCase()} pronto para compartilhamento.`,
+        );
+      } catch (error) {
+        console.error("Error exporting logs:", error);
+        setLogsBanner("error", "Nao foi possivel exportar os logs.");
+      }
+    },
+    [
+      containerId,
+      logFilter,
+      primaryName,
+      setLogsBanner,
+      trimmedSearchQuery,
+      visibleLogEntries,
+    ],
+  );
 
   const performAction = async (action: ContainerAction) => {
     await runAction({
@@ -368,6 +667,7 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
       }
@@ -618,7 +918,10 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
 
             <TouchableOpacity
               style={styles.logsClearButton}
-              onPress={() => setLogLines([])}
+              onPress={() => {
+                setLogEntries([]);
+                setLogsFeedback(null);
+              }}
             >
               <Text style={styles.logsClearButtonText}>Clear</Text>
             </TouchableOpacity>
@@ -628,21 +931,150 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
             <Text style={styles.logsErrorText}>{logsError}</Text>
           ) : null}
 
-          <View style={styles.logsPanel}>
-            {logLines.length > 0 ? (
-              logLines.map((line, index) => (
-                <Text key={`${index}-${line}`} style={styles.logLine}>
-                  {line}
-                </Text>
-              ))
-            ) : (
+          <View style={styles.logsToolbar}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Buscar nos logs"
+              placeholderTextColor={Colors.textPlaceholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.logsSearchInput}
+            />
+
+            <View style={styles.logsFilterRow}>
+              {LOG_FILTERS.map((filterOption) => {
+                const isActive = logFilter === filterOption.value;
+
+                return (
+                  <TouchableOpacity
+                    key={filterOption.value}
+                    style={[
+                      styles.logsFilterChip,
+                      isActive && styles.logsFilterChipActive,
+                    ]}
+                    onPress={() => setLogFilter(filterOption.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.logsFilterChipText,
+                        isActive && styles.logsFilterChipTextActive,
+                      ]}
+                    >
+                      {filterOption.label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.logsFilterChipCount,
+                        isActive && styles.logsFilterChipCountActive,
+                      ]}
+                    >
+                      {String(logCounts[filterOption.value])}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.logsSummaryRow}>
+              <Text style={styles.logsSummaryText}>
+                {visibleLogEntries.length} de {logEntries.length} linhas visiveis
+              </Text>
+
+              <View style={styles.logsActionsRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.logsActionButton,
+                    visibleLogEntries.length === 0 && styles.logsActionButtonDisabled,
+                  ]}
+                  onPress={() => void handleCopyLogs()}
+                  disabled={visibleLogEntries.length === 0}
+                >
+                  <Text style={styles.logsActionButtonText}>Copy</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.logsActionButton,
+                    visibleLogEntries.length === 0 && styles.logsActionButtonDisabled,
+                  ]}
+                  onPress={() => void handleExportLogs("txt")}
+                  disabled={visibleLogEntries.length === 0}
+                >
+                  <Text style={styles.logsActionButtonText}>Export TXT</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.logsActionButton,
+                    visibleLogEntries.length === 0 && styles.logsActionButtonDisabled,
+                  ]}
+                  onPress={() => void handleExportLogs("json")}
+                  disabled={visibleLogEntries.length === 0}
+                >
+                  <Text style={styles.logsActionButtonText}>Export JSON</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <ActionFeedbackBanner feedback={logsFeedback} />
+
+          <ScrollView
+            style={styles.logsPanel}
+            contentContainerStyle={styles.logsPanelContent}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+          >
+            {logEntries.length === 0 ? (
               <Text style={styles.logsEmptyText}>
                 {logsConnected
                   ? "Aguardando novas linhas de log..."
                   : "Abra esta aba para iniciar o stream e aguarde a conexao."}
               </Text>
+            ) : visibleLogEntries.length > 0 ? (
+              visibleLogEntries.map((entry) => (
+                <View key={entry.id} style={styles.logRow}>
+                  <View
+                    style={[
+                      styles.logLevelBadge,
+                      entry.level === "error" && styles.logLevelBadgeError,
+                      entry.level === "warn" && styles.logLevelBadgeWarn,
+                      entry.level === "info" && styles.logLevelBadgeInfo,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.logLevelBadgeText,
+                        entry.level === "error" && styles.logLevelBadgeTextError,
+                        entry.level === "warn" && styles.logLevelBadgeTextWarn,
+                        entry.level === "info" && styles.logLevelBadgeTextInfo,
+                      ]}
+                    >
+                      {entry.level.toUpperCase()}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.logLine}>
+                    {getHighlightedParts(entry.message, trimmedSearchQuery).map(
+                      (part, index) => (
+                        <Text
+                          key={`${entry.id}-${index}`}
+                          style={part.isMatch ? styles.logHighlight : undefined}
+                        >
+                          {part.value}
+                        </Text>
+                      ),
+                    )}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.logsEmptyText}>
+                Nenhuma linha corresponde aos filtros atuais.
+              </Text>
             )}
-          </View>
+          </ScrollView>
         </Section>
       ) : null}
 
@@ -953,20 +1385,147 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontSize: 12,
   },
+  logsToolbar: {
+    gap: 12,
+  },
+  logsSearchInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(65, 71, 82, 0.5)",
+    backgroundColor: Colors.surfaceHigh,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: Colors.onSurface,
+    fontSize: 14,
+  },
+  logsFilterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  logsFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: Colors.surfaceHigh,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  logsFilterChipActive: {
+    backgroundColor: "rgba(88, 166, 255, 0.16)",
+    borderColor: "rgba(88, 166, 255, 0.35)",
+  },
+  logsFilterChipText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    fontFamily: monoFont,
+    letterSpacing: 0.8,
+  },
+  logsFilterChipTextActive: {
+    color: Colors.onSurface,
+  },
+  logsFilterChipCount: {
+    color: Colors.textSubtle,
+    fontSize: 11,
+    fontFamily: monoFont,
+  },
+  logsFilterChipCountActive: {
+    color: Colors.primary,
+  },
+  logsSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  logsSummaryText: {
+    color: Colors.textMuted,
+    fontSize: 12,
+  },
+  logsActionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  logsActionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.primaryContainer,
+  },
+  logsActionButtonDisabled: {
+    opacity: 0.45,
+  },
+  logsActionButtonText: {
+    color: Colors.onSurface,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   logsPanel: {
     minHeight: 280,
     maxHeight: 420,
     borderRadius: 14,
     backgroundColor: "#0b0f14",
-    padding: 14,
-    gap: 8,
-    overflow: "scroll",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  logsPanelContent: {
+    gap: 10,
+  },
+  logRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  logLevelBadge: {
+    marginTop: 2,
+    minWidth: 56,
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  logLevelBadgeError: {
+    backgroundColor: "rgba(255, 180, 171, 0.12)",
+    borderColor: "rgba(255, 180, 171, 0.26)",
+  },
+  logLevelBadgeWarn: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderColor: "rgba(245, 158, 11, 0.3)",
+  },
+  logLevelBadgeInfo: {
+    backgroundColor: "rgba(16, 185, 129, 0.12)",
+    borderColor: "rgba(16, 185, 129, 0.28)",
+  },
+  logLevelBadgeText: {
+    fontSize: 10,
+    fontFamily: monoFont,
+    letterSpacing: 0.8,
+  },
+  logLevelBadgeTextError: {
+    color: Colors.error,
+  },
+  logLevelBadgeTextWarn: {
+    color: Colors.warning,
+  },
+  logLevelBadgeTextInfo: {
+    color: Colors.success,
   },
   logLine: {
-    color: "#c9f1d5",
+    flex: 1,
+    color: "#d8f4e1",
     fontSize: 12,
     fontFamily: monoFont,
     lineHeight: 18,
+  },
+  logHighlight: {
+    backgroundColor: "rgba(245, 158, 11, 0.3)",
+    color: "#fff5cf",
   },
   logsEmptyText: {
     color: Colors.textMuted,
