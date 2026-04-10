@@ -1,0 +1,11 @@
+.git
+.gitignore
+.venv
+.claude
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+node_modules/
+tests/
+.env

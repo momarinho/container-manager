@@ -1,21 +1,36 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
+WORKDIR /build
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir .
+
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends dumb-init curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 appuser
 
-COPY pyproject.toml README.md ./
+COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
 
-RUN pip install --no-cache-dir .
-
-# RUN useradd --create-home --uid 1000 appuser
-# USER appuser
+USER appuser
 
 EXPOSE 3000
 

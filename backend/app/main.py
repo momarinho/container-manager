@@ -8,7 +8,7 @@ from threading import Event
 from typing import Any
 
 import docker
-from fastapi import Body, FastAPI, HTTPException, Request, Response, WebSocket
+from fastapi import Body, FastAPI, Request, Response, WebSocket
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -29,10 +29,28 @@ from app.services.docker_service import docker_service
 from app.services.system_stats import SystemStatsService
 from app.services.terminal_service import TerminalService
 from app.services.tunnel_service import TunnelService
+from app.utils.errors import AppError
 from app.utils.http import error_response, success_payload
 from app.utils.logger import logger
 
-app = FastAPI(title="ContainerMaster Backend Python", docs_url="/docs", redoc_url=None)
+API_TAGS = [
+    {"name": "Health", "description": "Healthcheck and uptime information."},
+    {"name": "Auth", "description": "Authentication and token validation endpoints."},
+    {"name": "Containers", "description": "Container lifecycle and execution operations."},
+    {"name": "System", "description": "Host system metrics and runtime information."},
+    {"name": "Tunnel", "description": "Tunnel provider status and control endpoints."},
+    {"name": "WebSockets", "description": "Real-time channels for stats, logs, tunnel and terminal."},
+]
+
+app = FastAPI(
+    title="ContainerMaster Backend Python",
+    version="0.1.0",
+    description="REST and WebSocket API for authentication, Docker container management, "
+    "system monitoring and tunnel status.",
+    docs_url="/docs",
+    redoc_url=None,
+    openapi_tags=API_TAGS,
+)
 
 allowed_origins = (
     ["*"]
@@ -102,12 +120,11 @@ async def log_and_rate_limit_requests(request: Request, call_next: Any) -> Respo
     allowed = await rate_limiter.check(client_ip)
     if not allowed:
         logger.warning("Rate limit exceeded for IP %s", client_ip)
-        return JSONResponse(
-            status_code=429,
-            content={
-                "error": "Too many requests",
-                "retryAfter": round(config.rate_limit_window_ms / 1000),
-            },
+        return error_response(
+            429,
+            "RATE_LIMIT_EXCEEDED",
+            "Too many requests",
+            {"retryAfter": round(config.rate_limit_window_ms / 1000)},
         )
 
     logger.info("%s %s", request.method, request.url.path)
@@ -120,6 +137,11 @@ async def validation_exception_handler(
     exc: RequestValidationError,
 ) -> JSONResponse:
     return error_response(400, "VALIDATION_ERROR", "Validation error", exc.errors())
+
+
+@app.exception_handler(AppError)
+async def app_exception_handler(_request: Request, exc: AppError) -> JSONResponse:
+    return error_response(exc.status_code, exc.code, exc.message, exc.details)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -139,25 +161,17 @@ async def http_exception_handler(
 async def unhandled_exception_handler(
     _request: Request, exc: Exception
 ) -> JSONResponse:
-    logger.exception("Unhandled exception")
+    logger.exception("Unhandled exception: %s", exc)
     details = {"message": str(exc)} if config.node_env == "development" else None
     return error_response(
         500, "INTERNAL_SERVER_ERROR", "Internal server error", details
     )
 
 
-def _unauthorized_missing() -> JSONResponse:
-    return error_response(401, "AUTH_TOKEN_MISSING", "Missing token")
-
-
-def _unauthorized_invalid() -> JSONResponse:
-    return error_response(401, "AUTH_TOKEN_INVALID", "Invalid or expired token")
-
-
 def require_http_user(request: Request) -> dict[str, str]:
     token = get_bearer_token(request.headers.get("Authorization"))
     if not token:
-        raise HTTPException(status_code=401, detail="Missing token")
+        raise AppError(401, "AUTH_TOKEN_MISSING", "Missing token")
 
     try:
         payload = verify_jwt(token)
@@ -166,10 +180,10 @@ def require_http_user(request: Request) -> dict[str, str]:
             "username": str(payload["username"]),
         }
     except (KeyError, ValueError) as exc:
-        raise HTTPException(status_code=401, detail="Invalid or expired token") from exc
+        raise AppError(401, "AUTH_TOKEN_INVALID", "Invalid or expired token") from exc
 
 
-@app.get("/health")
+@app.get("/health", tags=["Health"], summary="Healthcheck")
 async def health() -> dict[str, Any]:
     started_at = getattr(app.state, "started_at", time.monotonic())
     return success_payload(
@@ -181,7 +195,7 @@ async def health() -> dict[str, Any]:
     )
 
 
-@app.post("/api/auth/login")
+@app.post("/api/auth/login", tags=["Auth"], summary="Authenticate user")
 async def login(credentials: LoginCredentials):
     if not credentials.username and not credentials.apiToken:
         return error_response(
@@ -204,22 +218,14 @@ async def login(credentials: LoginCredentials):
     return success_payload(response.model_dump())
 
 
-@app.get("/api/auth/verify")
+@app.get("/api/auth/verify", tags=["Auth"], summary="Verify bearer token")
 async def verify(request: Request):
-    try:
-        user = require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
-
+    user = require_http_user(request)
     return success_payload({"valid": True, "user": user})
 
 
-@app.get("/api/auth/validate")
-@app.post("/api/auth/validate")
+@app.get("/api/auth/validate", tags=["Auth"], summary="Validate token payload")
+@app.post("/api/auth/validate", tags=["Auth"], summary="Validate token payload")
 async def validate(request: Request, body: dict[str, Any] | None = Body(default=None)):
     token = None
     if body:
@@ -246,21 +252,14 @@ async def validate(request: Request, body: dict[str, Any] | None = Body(default=
     )
 
 
-@app.get("/api/containers")
+@app.get("/api/containers", tags=["Containers"], summary="List containers")
 async def list_containers(
     request: Request,
     all: bool = False,
     status: str | None = None,
     name: str | None = None,
 ):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         containers = await asyncio.to_thread(docker_service.list_containers, all)
@@ -287,16 +286,13 @@ async def list_containers(
         )
 
 
-@app.post("/api/containers/validate-image")
+@app.post(
+    "/api/containers/validate-image",
+    tags=["Containers"],
+    summary="Validate container image availability",
+)
 async def validate_container_image(request: Request, payload: ValidateImageRequest):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         result = await asyncio.to_thread(docker_service.validate_image, payload.image)
@@ -310,16 +306,9 @@ async def validate_container_image(request: Request, payload: ValidateImageReque
         )
 
 
-@app.post("/api/containers")
+@app.post("/api/containers", tags=["Containers"], summary="Create container")
 async def create_container(request: Request, payload: CreateContainerRequest):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         created = await asyncio.to_thread(
@@ -346,16 +335,9 @@ async def create_container(request: Request, payload: CreateContainerRequest):
         )
 
 
-@app.get("/api/containers/{container_id}")
+@app.get("/api/containers/{container_id}", tags=["Containers"], summary="Get container")
 async def get_container(request: Request, container_id: str):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         container = await asyncio.to_thread(docker_service.get_container, container_id)
@@ -373,14 +355,7 @@ async def _container_action(
     message: str,
     error_message: str,
 ) -> JSONResponse | dict[str, Any]:
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         action = getattr(docker_service, method_name)
@@ -391,7 +366,11 @@ async def _container_action(
         return error_response(500, code, error_message)
 
 
-@app.post("/api/containers/{container_id}/start")
+@app.post(
+    "/api/containers/{container_id}/start",
+    tags=["Containers"],
+    summary="Start container",
+)
 async def start_container(request: Request, container_id: str):
     return await _container_action(
         request,
@@ -403,7 +382,11 @@ async def start_container(request: Request, container_id: str):
     )
 
 
-@app.post("/api/containers/{container_id}/stop")
+@app.post(
+    "/api/containers/{container_id}/stop",
+    tags=["Containers"],
+    summary="Stop container",
+)
 async def stop_container(request: Request, container_id: str):
     return await _container_action(
         request,
@@ -415,7 +398,11 @@ async def stop_container(request: Request, container_id: str):
     )
 
 
-@app.post("/api/containers/{container_id}/restart")
+@app.post(
+    "/api/containers/{container_id}/restart",
+    tags=["Containers"],
+    summary="Restart container",
+)
 async def restart_container(request: Request, container_id: str):
     return await _container_action(
         request,
@@ -427,7 +414,11 @@ async def restart_container(request: Request, container_id: str):
     )
 
 
-@app.post("/api/containers/{container_id}/pause")
+@app.post(
+    "/api/containers/{container_id}/pause",
+    tags=["Containers"],
+    summary="Pause container",
+)
 async def pause_container(request: Request, container_id: str):
     return await _container_action(
         request,
@@ -439,7 +430,11 @@ async def pause_container(request: Request, container_id: str):
     )
 
 
-@app.post("/api/containers/{container_id}/unpause")
+@app.post(
+    "/api/containers/{container_id}/unpause",
+    tags=["Containers"],
+    summary="Unpause container",
+)
 async def unpause_container(request: Request, container_id: str):
     return await _container_action(
         request,
@@ -451,20 +446,17 @@ async def unpause_container(request: Request, container_id: str):
     )
 
 
-@app.delete("/api/containers/{container_id}")
+@app.delete(
+    "/api/containers/{container_id}",
+    tags=["Containers"],
+    summary="Remove container",
+)
 async def remove_container(
     request: Request,
     container_id: str,
     force: bool = False,
 ):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         await asyncio.to_thread(docker_service.remove_container, container_id, force)
@@ -476,16 +468,13 @@ async def remove_container(
         )
 
 
-@app.get("/api/containers/{container_id}/stats")
+@app.get(
+    "/api/containers/{container_id}/stats",
+    tags=["Containers"],
+    summary="Get container runtime stats",
+)
 async def get_container_stats(request: Request, container_id: str):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         container_state = await asyncio.to_thread(
@@ -512,20 +501,17 @@ async def get_container_stats(request: Request, container_id: str):
         )
 
 
-@app.post("/api/containers/{container_id}/exec")
+@app.post(
+    "/api/containers/{container_id}/exec",
+    tags=["Containers"],
+    summary="Execute command in container",
+)
 async def exec_in_container(
     request: Request,
     container_id: str,
     payload: ExecRequest,
 ):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     if not payload.cmd:
         return error_response(
@@ -545,30 +531,20 @@ async def exec_in_container(
         return error_response(500, "CONTAINER_EXEC_FAILED", "Failed to execute command")
 
 
-@app.get("/api/system/stats")
+@app.get("/api/system/stats", tags=["System"], summary="Get current system stats")
 async def get_stats(request: Request):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     return success_payload(system_stats_service.get_current_stats())
 
 
-@app.get("/api/system/stats/history")
+@app.get(
+    "/api/system/stats/history",
+    tags=["System"],
+    summary="Get system stats history",
+)
 async def get_stats_history(request: Request, limit: int | None = None):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         history = system_stats_service.get_history(limit)
@@ -580,16 +556,9 @@ async def get_stats_history(request: Request, limit: int | None = None):
         )
 
 
-@app.get("/api/system/info")
+@app.get("/api/system/info", tags=["System"], summary="Get host system information")
 async def get_system_info(request: Request):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         info = await system_stats_service.get_system_info()
@@ -599,16 +568,9 @@ async def get_system_info(request: Request):
         return error_response(500, "SYSTEM_INFO_FAILED", "Failed to get system info")
 
 
-@app.get("/api/tunnel/status")
+@app.get("/api/tunnel/status", tags=["Tunnel"], summary="Get tunnel status")
 async def get_tunnel_status(request: Request):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         status = await tunnel_service.refresh()
@@ -620,16 +582,9 @@ async def get_tunnel_status(request: Request):
         )
 
 
-@app.post("/api/tunnel/connect")
+@app.post("/api/tunnel/connect", tags=["Tunnel"], summary="Connect tunnel provider")
 async def connect_tunnel(request: Request, payload: TunnelConnectRequest):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     if payload.provider != "tailscale":
         return error_response(
@@ -646,16 +601,9 @@ async def connect_tunnel(request: Request, payload: TunnelConnectRequest):
         return error_response(500, "TUNNEL_CONNECT_FAILED", "Failed to connect tunnel")
 
 
-@app.post("/api/tunnel/disconnect")
+@app.post("/api/tunnel/disconnect", tags=["Tunnel"], summary="Disconnect tunnel")
 async def disconnect_tunnel(request: Request):
-    try:
-        require_http_user(request)
-    except HTTPException as exc:
-        return (
-            _unauthorized_missing()
-            if exc.detail == "Missing token"
-            else _unauthorized_invalid()
-        )
+    require_http_user(request)
 
     try:
         status = await tunnel_service.disconnect()
