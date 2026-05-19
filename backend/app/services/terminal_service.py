@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import socket as socket_lib
 import threading
 import time
@@ -78,11 +79,15 @@ class TerminalSession:
 
 
 class TerminalService:
-    def __init__(self, docker_service: DockerService) -> None:
-        self.docker_service = docker_service
+    def __init__(self, docker_service_factory: Callable[[], DockerService]) -> None:
+        self._docker_service_factory = docker_service_factory
         self.sessions: dict[str, TerminalSession] = {}
         self._lock = threading.Lock()
         self._cleanup_task: asyncio.Task[None] | None = None
+
+    @property
+    def docker_service(self) -> DockerService:
+        return self._docker_service_factory()
 
     def start(self) -> None:
         if self._cleanup_task is None:

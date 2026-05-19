@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from threading import Lock
 from typing import Any
 
 import docker
@@ -452,5 +453,16 @@ class DockerService:
             "blockWrite": block_write,
         }
 
+_docker_service: DockerService | None = None
+_docker_service_lock = Lock()
 
-docker_service = DockerService()
+
+def get_docker_service() -> DockerService:
+    global _docker_service
+
+    if _docker_service is None:
+        with _docker_service_lock:
+            if _docker_service is None:
+                _docker_service = DockerService()
+
+    return _docker_service

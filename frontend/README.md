@@ -1,21 +1,33 @@
 # Container Manager Frontend
 
-Frontend Expo do projeto `container-manager`.
+Frontend Expo do projeto `container-manager`, compartilhando contrato com o backend FastAPI.
 
 ## Requisitos
 
 - Node.js 20+
-- Backend rodando em `http://localhost:3000`
+- backend disponível em `http://localhost:3000`
 
 ## Setup
 
 ### 1. Subir o backend
 
+Opção Docker:
+
 ```bash
 cd ../backend
 cp .env.example .env
-npm install
-npm run dev
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+Opção local:
+
+```bash
+cd ../backend
+cp .env.example .env
+python -m venv .venv
+. .venv/bin/activate
+pip install -e .
+uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
 ```
 
 ### 2. Subir o frontend
@@ -26,7 +38,7 @@ npm install
 npm run web
 ```
 
-Você também pode usar:
+Também disponível em:
 
 ```bash
 npm run android
@@ -35,18 +47,17 @@ npm run ios
 
 ## Login local
 
-Credenciais seed do backend:
-
 - username: `alice`
 - password: `password123`
 
-Se quiser autenticar por token, configure `API_TOKENS` no ambiente do backend.
+Se quiser autenticar por token, configure `API_TOKENS` no backend.
 
 ## Arquitetura atual
 
-- O servidor ativo e a lista de servidores ficam persistidos localmente no frontend
-- O backend expõe `auth`, `containers`, `system` e `websocket`
-- A aba de terminal ainda não está conectada a uma sessão real interativa
+- o servidor ativo e a lista de servidores ficam persistidos localmente
+- o app consome `auth`, `containers`, `system`, `tunnel` e `websocket`
+- logs e terminal usam sessões reais via WebSocket
+- a UI de túnel ainda não existe no app
 
 ## Scripts
 

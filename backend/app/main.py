@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 from collections import defaultdict, deque
-from threading import Event
+from threading import Event, Lock
 from typing import Any
 
 import docker
@@ -26,7 +26,7 @@ from app.models import (
 )
 from app.security import get_bearer_token, utc_timestamp, verify_jwt
 from app.services.auth_service import auth_service
-from app.services.docker_service import docker_service
+from app.services.docker_service import get_docker_service
 from app.services.system_stats import SystemStatsService
 from app.services.terminal_service import TerminalService
 from app.services.tunnel_service import TunnelService
@@ -78,11 +78,11 @@ class InMemoryRateLimiter:
         self.window_seconds = window_ms / 1000
         self.max_requests = max_requests
         self.requests: dict[str, deque[float]] = defaultdict(deque)
-        self.lock = asyncio.Lock()
+        self.lock = Lock()
 
     async def check(self, key: str) -> bool:
         now = time.monotonic()
-        async with self.lock:
+        with self.lock:
             history = self.requests[key]
             while history and now - history[0] > self.window_seconds:
                 history.popleft()
@@ -98,8 +98,8 @@ rate_limiter = InMemoryRateLimiter(
     window_ms=config.rate_limit_window_ms,
     max_requests=config.rate_limit_max_requests,
 )
-system_stats_service = SystemStatsService(docker_service)
-terminal_service = TerminalService(docker_service)
+system_stats_service = SystemStatsService(get_docker_service)
+terminal_service = TerminalService(get_docker_service)
 tunnel_service = TunnelService()
 
 
@@ -211,8 +211,7 @@ async def login(credentials: LoginCredentials):
             "Username/password or API token required",
         )
 
-    is_valid = await asyncio.to_thread(
-        auth_service.validate_credentials,
+    is_valid = auth_service.validate_credentials(
         credentials.username,
         credentials.password,
         credentials.apiToken,
@@ -269,6 +268,7 @@ async def list_containers(
     require_http_user(request)
 
     try:
+        docker_service = get_docker_service()
         containers = await asyncio.to_thread(docker_service.list_containers, all)
         if status:
             containers = [
@@ -302,6 +302,7 @@ async def validate_container_image(request: Request, payload: ValidateImageReque
     require_http_user(request)
 
     try:
+        docker_service = get_docker_service()
         result = await asyncio.to_thread(docker_service.validate_image, payload.image)
         return success_payload(result)
     except ValueError as exc:
@@ -318,6 +319,7 @@ async def create_container(request: Request, payload: CreateContainerRequest):
     require_http_user(request)
 
     try:
+        docker_service = get_docker_service()
         created = await asyncio.to_thread(
             docker_service.create_container,
             payload.model_dump(by_alias=True),
@@ -347,6 +349,7 @@ async def get_container(request: Request, container_id: str):
     require_http_user(request)
 
     try:
+        docker_service = get_docker_service()
         container = await asyncio.to_thread(docker_service.get_container, container_id)
         return success_payload(container)
     except Exception:
@@ -365,6 +368,7 @@ async def _container_action(
     require_http_user(request)
 
     try:
+        docker_service = get_docker_service()
         action = getattr(docker_service, method_name)
         await asyncio.to_thread(action, container_id)
         return success_payload({"id": container_id, "message": message})
@@ -466,6 +470,7 @@ async def remove_container(
     require_http_user(request)
 
     try:
+        docker_service = get_docker_service()
         await asyncio.to_thread(docker_service.remove_container, container_id, force)
         return success_payload({"id": container_id, "message": "Container removed"})
     except Exception:
@@ -484,6 +489,7 @@ async def get_container_stats(request: Request, container_id: str):
     require_http_user(request)
 
     try:
+        docker_service = get_docker_service()
         container_state = await asyncio.to_thread(
             docker_service.inspect_container_state, container_id
         )
@@ -526,6 +532,7 @@ async def exec_in_container(
         )
 
     try:
+        docker_service = get_docker_service()
         result = await asyncio.to_thread(
             docker_service.exec_in_container,
             container_id,
@@ -698,6 +705,7 @@ async def websocket_logs(websocket: WebSocket, container_id: str) -> None:
     stop_event = Event()
     loop = asyncio.get_running_loop()
     try:
+        docker_service = get_docker_service()
         log_stream = await asyncio.to_thread(
             docker_service.open_log_stream, container_id
         )

@@ -13,7 +13,13 @@ class TunnelService:
     def __init__(self) -> None:
         self._task: asyncio.Task | None = None
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
-        self._last_status: dict[str, Any] = self._read_status_sync()
+        self._last_status: dict[str, Any] = self._build_status(
+            state="disconnected",
+            connected=False,
+            needs_login=False,
+            backend_state="Unknown",
+            health=[],
+        )
 
     def start(self) -> None:
         if self._task is None:
@@ -56,6 +62,33 @@ class TunnelService:
             return "connecting"
         return "disconnected"
 
+    def _build_status(
+        self,
+        *,
+        state: str,
+        connected: bool,
+        needs_login: bool,
+        backend_state: str,
+        health: list[str],
+        hostname: str | None = None,
+        magic_dns_name: str | None = None,
+        tailnet: str | None = None,
+        ip: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "provider": "tailscale",
+            "state": state,
+            "connected": connected,
+            "needsLogin": needs_login,
+            "backendState": backend_state,
+            "hostname": hostname,
+            "magicDnsName": magic_dns_name,
+            "tailnet": tailnet,
+            "ip": ip,
+            "health": health,
+            "updatedAt": int(time.time() * 1000),
+        }
+
     def _read_status_sync(self) -> dict[str, Any]:
         try:
             payload = json.loads(self._run_tailscale("status", "--json"))
@@ -64,33 +97,25 @@ class TunnelService:
             backend_state = payload.get("BackendState", "NoState")
             state = self._map_state(backend_state)
 
-            return {
-                "provider": "tailscale",
-                "state": state,
-                "connected": state == "connected",
-                "needsLogin": state == "needs_login",
-                "backendState": backend_state,
-                "hostname": self_node.get("HostName"),
-                "magicDnsName": self_node.get("DNSName"),
-                "tailnet": payload.get("MagicDNSSuffix"),
-                "ip": ips[0] if ips else None,
-                "health": payload.get("Health") or [],
-                "updatedAt": int(time.time() * 1000),
-            }
+            return self._build_status(
+                state=state,
+                connected=state == "connected",
+                needs_login=state == "needs_login",
+                backend_state=backend_state,
+                hostname=self_node.get("HostName"),
+                magic_dns_name=self_node.get("DNSName"),
+                tailnet=payload.get("MagicDNSSuffix"),
+                ip=ips[0] if ips else None,
+                health=payload.get("Health") or [],
+            )
         except Exception as exc:
-            return {
-                "provider": "tailscale",
-                "state": "error",
-                "connected": False,
-                "needsLogin": False,
-                "backendState": "Error",
-                "hostname": None,
-                "magicDnsName": None,
-                "tailnet": None,
-                "ip": None,
-                "health": [str(exc)],
-                "updatedAt": int(time.time() * 1000),
-            }
+            return self._build_status(
+                state="error",
+                connected=False,
+                needs_login=False,
+                backend_state="Error",
+                health=[str(exc)],
+            )
 
     async def refresh(self) -> dict[str, Any]:
         self._last_status = await asyncio.to_thread(self._read_status_sync)

@@ -1,65 +1,75 @@
-# Container Manager 🐳
+# Container Manager
 
-Uma solução completa para monitoramento e gerenciamento de containers Docker, oferecendo uma interface intuitiva (Mobile e Web) e uma API robusta para controle em tempo real.
+Aplicação para monitorar e operar containers Docker com backend FastAPI e frontend Expo/React Native.
 
-## 🚀 Tecnologias
+## Stack
 
-Este projeto utiliza uma arquitetura moderna dividida em:
+- `backend/`: Python 3.11+, FastAPI, Docker SDK, psutil, JWT
+- `frontend/`: Expo Router, React Native, TypeScript
+- `shared/`: tipos compartilhados
 
-- **Backend:** Python 3.11+, FastAPI, Uvicorn, Docker SDK, JWT e Bcrypt.
-- **Frontend:** React Native com Expo, Expo Router, Lucide Icons e Axios.
-- **Shared:** Módulos compartilhados entre os ambientes.
-
-## 📦 Estrutura do Projeto
+## Estrutura
 
 ```text
 .
-├── backend/       # API de gerenciamento (FastAPI)
-├── frontend/      # App Mobile & Web (React Native/Expo)
-├── shared/        # Lógica e tipos compartilhados
-└── docker-compose.yml # Orquestração para desenvolvimento
+├── backend/   # API e integração com Docker/Tailscale
+├── frontend/  # App web/mobile
+└── shared/    # Tipos compartilhados
 ```
 
-## 🛠️ Como Executar
+## Setup real
 
-### Pré-requisitos
-- Docker e Docker Compose instalados.
-- Node.js & npm/yarn (para rodar o frontend localmente).
-- Python 3.11+ (se preferir rodar o backend fora do Docker).
+### Backend com Docker
 
-### 1. Backend (API)
-Navegue até a pasta backend e configure o ambiente:
 ```bash
 cd backend
 cp .env.example .env
-# Inicie com Docker
-docker-compose up --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
-A API estará disponível em `http://localhost:8000`.
 
-### 2. Frontend (App)
-Instale as dependências e inicie o Expo:
+API em `http://localhost:3000`.
+
+### Backend local com virtualenv
+
+```bash
+cd backend
+cp .env.example .env
+python -m venv .venv
+. .venv/bin/activate
+pip install -e .
+uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
+```
+
+### Frontend
+
 ```bash
 cd frontend
 npm install
-# Para Web
 npm run web
-# Para Mobile (Android/iOS)
-npm run android # ou npm run ios
 ```
 
-## ✨ Funcionalidades (Roadmap)
-- [x] Listagem de containers ativos.
-- [x] Monitoramento de recursos (CPU, Memória via psutil).
-- [x] Autenticação segura com JWT.
-- [x] Suporte a WebSockets para atualizações em tempo real.
-- [ ] Gerenciamento de Volumes e Redes.
-- [ ] Logs dos containers em tempo real.
+Também disponível em `npm run android` e `npm run ios`.
 
-## 🔑 Variáveis de Ambiente
-O backend requer algumas configurações básicas no `.env`:
-- `DOCKER_HOST`: URL do socket do Docker (padrão: `unix:///var/run/docker.sock`).
-- `SECRET_KEY`: Chave para geração de tokens JWT.
+## Funcionalidades já implementadas
 
----
-Desenvolvido por [momarinho](https://github.com/momarinho)
+- autenticação JWT
+- dashboard com métricas do host e containers
+- listagem, busca e ações de ciclo de vida dos containers
+- criação de container com validação de imagem
+- logs em tempo real via WebSocket
+- terminal interativo via WebSocket
+- configuração de múltiplos servidores no app
+- endpoints de túnel Tailscale no backend
+
+## Pendências principais
+
+- interface de túnel no frontend
+- gestão dedicada de volumes e redes além da criação
+- cobertura de testes mais ampla e pipeline do frontend
+
+## Variáveis importantes
+
+- `PORT`: porta da API, padrão `3000`
+- `JWT_SECRET`: segredo JWT com pelo menos 32 caracteres
+- `DOCKER_SOCKET_PATH`: socket Docker, padrão `/var/run/docker.sock`
+- `API_TOKENS`: tokens opcionais de autenticação

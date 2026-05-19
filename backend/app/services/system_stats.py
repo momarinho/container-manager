@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import platform
 import time
+from collections.abc import Callable
 from collections import deque
 from typing import Any
 
@@ -14,12 +15,16 @@ from app.utils.logger import logger
 
 
 class SystemStatsService:
-    def __init__(self, docker_service: DockerService) -> None:
-        self.docker_service = docker_service
+    def __init__(self, docker_service_factory: Callable[[], DockerService]) -> None:
+        self._docker_service_factory = docker_service_factory
         self.history: deque[dict[str, Any]] = deque(maxlen=config.stats_history_size)
         self.current_stats: dict[str, Any] = self._empty_stats()
         self.subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self._task: asyncio.Task[None] | None = None
+
+    @property
+    def docker_service(self) -> DockerService:
+        return self._docker_service_factory()
 
     def start(self) -> None:
         if self._task is None:
