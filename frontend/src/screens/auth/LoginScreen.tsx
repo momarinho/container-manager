@@ -76,7 +76,10 @@ export default function LoginScreen() {
   }, [activeServer, servers]);
 
   const handleLogin = async () => {
-    if (!serverUrl) {
+    const normalizedServerUrl = serverUrl.trim();
+    const normalizedServerName = serverName.trim();
+
+    if (!normalizedServerUrl) {
       Alert.alert("Error", "Enter server endpoint");
       return;
     }
@@ -97,7 +100,11 @@ export default function LoginScreen() {
       const credentials: LoginCredentials =
         loginType === "password" ? { username, password } : { apiToken };
 
-      await login(credentials, serverUrl, serverName);
+      await login(
+        credentials,
+        normalizedServerUrl,
+        normalizedServerName || "Active Server",
+      );
     } catch (error: any) {
       const message =
         error.response?.data?.error?.message ||

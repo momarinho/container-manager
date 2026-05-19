@@ -1,4 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
+import { authEventsService } from './auth-events.service';
 import { storageService } from './storage.service';
 
 // URL base padrão - será sobrescrita pela configuração do servidor
@@ -42,12 +43,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       // Limpar dados autenticados
       await storageService.clearAll();
-
-      // Disparar evento para redirecionar para login
-      // (o AuthContext vai ouvir esse evento)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-      }
+      authEventsService.emitUnauthorized();
     }
 
     return Promise.reject(error);

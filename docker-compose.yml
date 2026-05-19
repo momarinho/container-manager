@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: containermaster-backend-dev
+    user: "0:0"
+    env_file:
+      - ./backend/.env
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
+    ports:
+      - "${BACKEND_HOST_PORT:-3000}:3000"
+    volumes:
+      - ./backend/app:/app/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    read_only: false
+    tmpfs: []
+
+  frontend-web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.web
+    container_name: containermaster-frontend-web
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_WEB_HOST_PORT:-8081}:8081"

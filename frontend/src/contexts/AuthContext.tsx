@@ -11,6 +11,7 @@ import {
   LoginCredentials,
   ServerConfig,
 } from "../types/auth.types";
+import { authEventsService } from "../services/auth-events.service";
 import { storageService } from "../services/storage.service";
 import { authService } from "../services/auth.service";
 
@@ -108,31 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Carregar dados salvos ao iniciar
   useEffect(() => {
-    loadStoredAuth();
+    void loadStoredAuth();
 
-    // Ouvir evento de unauthorized do interceptor
     const handleUnauthorized = () => {
       dispatch({ type: "LOGOUT" });
     };
 
-    if (
-      typeof window !== "undefined" &&
-      typeof window.addEventListener === "function"
-    ) {
-      window.addEventListener("auth:unauthorized", handleUnauthorized as any);
-    }
-
-    return () => {
-      if (
-        typeof window !== "undefined" &&
-        typeof window.removeEventListener === "function"
-      ) {
-        window.removeEventListener(
-          "auth:unauthorized",
-          handleUnauthorized as any,
-        );
-      }
-    };
+    return authEventsService.subscribeUnauthorized(handleUnauthorized);
   }, []);
 
   const loadStoredAuth = async () => {
@@ -191,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await authService.login(credentials, serverUrl);
       const normalizedServerUrl = serverUrl.trim().replace(/\/$/, "");
+      const resolvedServerName = serverName.trim() || normalizedServerUrl;
       const storedServers = await storageService.getServers();
       const existingServer = storedServers.find(
         (item) => item.url.trim().replace(/\/$/, "") === normalizedServerUrl,
@@ -198,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const serverConfig: ServerConfig = existingServer ?? {
         id: Date.now().toString(),
-        name: serverName,
+        name: resolvedServerName,
         url: normalizedServerUrl,
         isDefault: storedServers.length === 0,
       };
@@ -206,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const nextServers = existingServer
         ? storedServers.map((item) =>
             item.id === existingServer.id
-              ? { ...item, name: serverName, url: normalizedServerUrl }
+              ? { ...item, name: resolvedServerName, url: normalizedServerUrl }
               : item,
           )
         : [...storedServers, serverConfig];

@@ -165,6 +165,7 @@ export default function TerminalScreen() {
     try {
       const data = await terminalService.getAvailableContainers();
       setContainers(data);
+      setShowContainerSelector(true);
     } catch (err) {
       console.error("Error loading containers:", err);
       Alert.alert("Erro", "Não foi possível carregar os containers");
@@ -278,8 +279,7 @@ export default function TerminalScreen() {
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={() => {
-              loadContainers();
-              setShowContainerSelector(true);
+              void loadContainers();
             }}
           >
             <Text style={styles.primaryButtonText}>Selecionar Container</Text>
@@ -362,6 +362,14 @@ export default function TerminalScreen() {
           </Text>
           <Text style={styles.selectedContainerName}>{selectedContainer.name}</Text>
         </View>
+        <TouchableOpacity
+          style={styles.switchContainerButton}
+          onPress={() => {
+            void loadContainers();
+          }}
+        >
+          <Text style={styles.switchContainerButtonText}>SWITCH</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.disconnectButton}
           onPress={handleDisconnect}
@@ -519,6 +527,18 @@ const styles = StyleSheet.create({
   },
   disconnectButton: {
     padding: 8,
+  },
+  switchContainerButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: Colors.surfaceHigh,
+  },
+  switchContainerButtonText: {
+    color: Colors.primary,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.2,
   },
   errorBanner: {
     backgroundColor: "rgba(255, 180, 171, 0.1)",

@@ -48,6 +48,7 @@ export function useWebSocket<T = any>(
         ws.current = null;
       }
       setIsConnected(false);
+      setError(null);
       return;
     }
 
@@ -80,6 +81,7 @@ export function useWebSocket<T = any>(
         
         console.log(`[WebSocket] Connecting to ${wsUrl}`);
         intentionalCloseRef.current = false;
+        setError(null);
         ws.current = new WebSocket(wsUrl);
 
         ws.current.onopen = () => {

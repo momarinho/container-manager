@@ -46,6 +46,27 @@ cp .env.example .env
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
+## Stack completa pela raiz
+
+```bash
+cd ..
+cp .env.example .env
+cp backend/.env.example backend/.env
+./scripts/docker-up.sh
+```
+
+Isso sobe o backend em `http://localhost:3000` e o frontend web em `http://localhost:8081`.
+Nessa stack, o backend roda com reload e acesso direto ao socket Docker do host para desenvolvimento local.
+
+Se `3000` ou `8081` já estiverem ocupadas, o script procura a proxima porta livre automaticamente.
+
+Para fixar portas manualmente no `.env` da raiz:
+
+```bash
+BACKEND_HOST_PORT=3001
+FRONTEND_WEB_HOST_PORT=8082
+```
+
 ## Testes
 
 ```bash

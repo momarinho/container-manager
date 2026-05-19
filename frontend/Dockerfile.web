@@ -1,0 +1,29 @@
+FROM node:20-slim AS builder
+
+WORKDIR /app/frontend
+
+ENV PATH="/app/frontend/node_modules/.bin:$PATH"
+ENV CI=1
+ENV EXPO_NO_TELEMETRY=1
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend /app/frontend
+COPY shared /app/shared
+
+RUN npx expo export --platform web
+
+FROM node:20-slim AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN npm install --global serve
+
+COPY --from=builder /app/frontend/dist /app/dist
+
+EXPOSE 8081
+
+CMD ["serve", "-s", "/app/dist", "-l", "8081"]

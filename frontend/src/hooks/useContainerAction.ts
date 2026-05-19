@@ -60,6 +60,31 @@ function getErrorMessage(action: ContainerActionType): string {
   }
 }
 
+function resolveActionErrorMessage(
+  action: ContainerActionType,
+  error: unknown,
+): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const response = (error as {
+      response?: { data?: { error?: { message?: string } } };
+    }).response;
+    const message = response?.data?.error?.message;
+    if (message) {
+      return message;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return getErrorMessage(action);
+}
+
 async function executeAction(
   action: ContainerActionType,
   containerId: string,
@@ -135,7 +160,7 @@ export function useContainerAction() {
         console.error(`Failed to execute "${action}" for container ${containerId}:`, error);
         setFeedback({
           tone: "error",
-          message: getErrorMessage(action),
+          message: resolveActionErrorMessage(action, error),
         });
         return false;
       } finally {
