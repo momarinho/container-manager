@@ -8,8 +8,10 @@ on:
       - "shared/**"
       - "scripts/**"
       - "docker-compose.yml"
+      - "docker-compose.release.yml"
       - ".dockerignore"
       - ".env.example"
+      - ".env.release.example"
       - ".github/workflows/app-quality.yml"
   push:
     branches:
@@ -20,8 +22,10 @@ on:
       - "shared/**"
       - "scripts/**"
       - "docker-compose.yml"
+      - "docker-compose.release.yml"
       - ".dockerignore"
       - ".env.example"
+      - ".env.release.example"
       - ".github/workflows/app-quality.yml"
   workflow_dispatch:
 

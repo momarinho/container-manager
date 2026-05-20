@@ -60,6 +60,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
 
 ```bash
 cd ../frontend
+cp .env.example .env
 npm install
 npm run web
 ```
@@ -95,3 +96,9 @@ npm run lint
 npm run typecheck
 npm run verify
 ```
+
+## Variáveis públicas de build
+
+- `EXPO_PUBLIC_DEFAULT_API_URL`: endpoint padrão antes do usuário trocar de servidor
+- `EXPO_PUBLIC_RELEASE_CHANNEL`: rótulo usado na badge de versão
+- `EXPO_PUBLIC_COMMIT_SHA`: metadata de release embutida no bundle

@@ -10,6 +10,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
+      - APP_NAME=${APP_NAME:-containermaster-backend}
+      - APP_VERSION=${APP_VERSION:-0.1.0}
+      - APP_COMMIT_SHA=${APP_COMMIT_SHA:-local}
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=${PORT:-3000}
       - JWT_SECRET=${JWT_SECRET}
@@ -17,6 +20,8 @@ services:
       - API_TOKENS=${API_TOKENS:-}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENABLE_ACCESS_LOGS=${ENABLE_ACCESS_LOGS:-true}
       - DOCKER_SOCKET_PATH=${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
       - STATS_UPDATE_INTERVAL=${STATS_UPDATE_INTERVAL:-5000}
       - STATS_HISTORY_SIZE=${STATS_HISTORY_SIZE:-100}

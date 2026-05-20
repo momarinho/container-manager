@@ -82,6 +82,17 @@ npm run web
 
 Também disponível em `npm run android` e `npm run ios`.
 
+### Release unificada
+
+```bash
+cp .env.release.example .env.release
+cp backend/.env.example backend/.env
+./scripts/deploy-release.sh
+```
+
+Esse fluxo usa [docker-compose.release.yml](/home/mateus/Documents/container-manager/docker-compose.release.yml:1) para publicar backend e frontend web a partir de imagens já construídas.
+O checklist operacional final está em [RELEASE_CHECKLIST.md](/home/mateus/Documents/container-manager/RELEASE_CHECKLIST.md:1).
+
 ## Funcionalidades implementadas
 
 - autenticação JWT
@@ -138,3 +149,5 @@ docker compose down -v
 - `JWT_SECRET`: segredo JWT com pelo menos 32 caracteres
 - `DOCKER_SOCKET_PATH`: socket Docker, padrão `/var/run/docker.sock`
 - `API_TOKENS`: tokens opcionais de autenticação
+- `APP_VERSION` e `APP_COMMIT_SHA`: metadata exposta em `/health`
+- `LOG_FORMAT` e `ENABLE_ACCESS_LOGS`: formato e emissão de logs HTTP

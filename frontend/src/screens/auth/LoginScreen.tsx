@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { runtimeConfig } from "../../config/runtime";
 import {
   Lock,
   LogIn,
@@ -55,7 +56,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { login, isLoading, servers, server: activeServer } = useAuth();
 
-  const [serverUrl, setServerUrl] = useState("http://localhost:3000");
+  const [serverUrl, setServerUrl] = useState(runtimeConfig.defaultApiUrl);
   const [serverName, setServerName] = useState("Local Server");
   const loginType: "password" | "token" = "password";
   const [username, setUsername] = useState("");
@@ -352,7 +353,9 @@ export default function LoginScreen() {
             </View>
             <View style={styles.footerItem}>
               <View style={styles.versionBadge}>
-                <Text style={styles.versionText}>v2.4.0-stable</Text>
+                <Text style={styles.versionText}>
+                  {runtimeConfig.appVersionLabel}
+                </Text>
               </View>
             </View>
           </View>

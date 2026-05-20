@@ -1,0 +1,47 @@
+services:
+  backend:
+    image: ${BACKEND_IMAGE_NAME:-ghcr.io/your-org/containermaster-backend}:${BACKEND_IMAGE_TAG:-latest}
+    container_name: containermaster-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      - APP_NAME=${APP_NAME:-containermaster-backend}
+      - APP_VERSION=${APP_VERSION:-0.1.0}
+      - APP_COMMIT_SHA=${APP_COMMIT_SHA:-local}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - ENABLE_ACCESS_LOGS=${ENABLE_ACCESS_LOGS:-true}
+    ports:
+      - "${BACKEND_HOST_PORT:-3000}:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend-web:
+    image: ${FRONTEND_IMAGE_NAME:-ghcr.io/your-org/containermaster-frontend-web}:${FRONTEND_IMAGE_TAG:-latest}
+    container_name: containermaster-frontend-web
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_WEB_HOST_PORT:-8081}:8081"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -30,10 +30,15 @@ def _get_csv(name: str) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class AppConfig:
+    app_name: str
+    app_version: str
+    app_commit_sha: str
     host: str
     port: int
     node_env: str
     log_level: str
+    log_format: str
+    enable_access_logs: bool
     jwt_secret: str
     jwt_expires_in: str
     api_tokens: tuple[str, ...]
@@ -74,10 +79,15 @@ def load_config() -> AppConfig:
     )
 
     return AppConfig(
+        app_name=os.getenv("APP_NAME", "containermaster-backend"),
+        app_version=os.getenv("APP_VERSION", "0.1.0"),
+        app_commit_sha=os.getenv("APP_COMMIT_SHA", "local"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=_get_int("PORT", 3000),
         node_env=os.getenv("NODE_ENV", "development"),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        log_format=os.getenv("LOG_FORMAT", "text").lower(),
+        enable_access_logs=_get_bool("ENABLE_ACCESS_LOGS", True),
         jwt_secret=jwt_secret,
         jwt_expires_in=os.getenv("JWT_EXPIRES_IN", "24h"),
         api_tokens=api_tokens,

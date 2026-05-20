@@ -1,9 +1,10 @@
 import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
+import { runtimeConfig } from '../config/runtime';
 import { authEventsService } from './auth-events.service';
 import { storageService } from './storage.service';
 
 // URL base padrão - será sobrescrita pela configuração do servidor
-const BASE_URL = 'http://localhost:3000/api';
+const BASE_URL = `${runtimeConfig.defaultApiUrl}/api`;
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,

@@ -6,6 +6,7 @@ import time
 from collections import defaultdict, deque
 from threading import Event, Lock
 from typing import Any
+from uuid import uuid4
 
 import docker
 from docker.errors import APIError
@@ -50,8 +51,8 @@ API_TAGS = [
 ]
 
 app = FastAPI(
-    title="ContainerMaster Backend Python",
-    version="0.1.0",
+    title=config.app_name,
+    version=config.app_version,
     description="REST and WebSocket API for authentication, Docker container management, "
     "system monitoring and tunnel status.",
     docs_url="/docs",
@@ -110,7 +111,14 @@ async def on_startup() -> None:
     terminal_service.start()
     tunnel_service.start()
     logger.info(
-        "ContainerMaster Python backend started on %s:%s", config.host, config.port
+        "ContainerMaster Python backend started on %s:%s",
+        config.host,
+        config.port,
+        extra={
+            "service": config.app_name,
+            "version": config.app_version,
+            "commit_sha": config.app_commit_sha,
+        },
     )
 
 
@@ -123,19 +131,59 @@ async def on_shutdown() -> None:
 
 @app.middleware("http")
 async def log_and_rate_limit_requests(request: Request, call_next: Any) -> Response:
+    request_id = request.headers.get("X-Request-ID") or str(uuid4())
+    request.state.request_id = request_id
     client_ip = request.client.host if request.client else "unknown"
     allowed = await rate_limiter.check(client_ip)
     if not allowed:
-        logger.warning("Rate limit exceeded for IP %s", client_ip)
-        return error_response(
+        response = error_response(
             429,
             "RATE_LIMIT_EXCEEDED",
             "Too many requests",
             {"retryAfter": round(config.rate_limit_window_ms / 1000)},
         )
+        response.headers["X-Request-ID"] = request_id
+        logger.warning(
+            "Rate limit exceeded for IP %s",
+            client_ip,
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": 429,
+                "duration_ms": 0,
+                "client_ip": client_ip,
+                "service": config.app_name,
+                "version": config.app_version,
+                "commit_sha": config.app_commit_sha,
+            },
+        )
+        return response
 
-    logger.info("%s %s", request.method, request.url.path)
-    return await call_next(request)
+    started_at = time.monotonic()
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+
+    if config.enable_access_logs:
+        logger.info(
+            "%s %s -> %s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": round((time.monotonic() - started_at) * 1000, 2),
+                "client_ip": client_ip,
+                "service": config.app_name,
+                "version": config.app_version,
+                "commit_sha": config.app_commit_sha,
+            },
+        )
+
+    return response
 
 
 @app.exception_handler(RequestValidationError)
@@ -198,6 +246,10 @@ async def health() -> dict[str, Any]:
             "status": "ok",
             "timestamp": utc_timestamp(),
             "uptime": time.monotonic() - started_at,
+            "service": config.app_name,
+            "environment": config.node_env,
+            "version": config.app_version,
+            "commitSha": config.app_commit_sha,
         }
     )
 

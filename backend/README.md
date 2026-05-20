@@ -79,9 +79,10 @@ Os cenários de API não exigem acesso ao Docker apenas para importar a aplicaç
 ## Produção
 
 ```bash
-cp .env.example .env
-docker compose pull
-docker compose up -d
+cd ..
+cp .env.release.example .env.release
+cp backend/.env.example backend/.env
+./scripts/deploy-release.sh
 ```
 
 Healthcheck:
@@ -97,6 +98,10 @@ curl --fail http://localhost:3000/health
 - `DOCKER_SOCKET_PATH=/var/run/docker.sock`
 - `API_TOKENS=token1,token2`
 - `TAILSCALE_CLI_PATH=tailscale`
+- `APP_VERSION=0.1.0`
+- `APP_COMMIT_SHA=local`
+- `LOG_FORMAT=json|text`
+- `ENABLE_ACCESS_LOGS=true|false`
 
 ## CI/CD
 
@@ -104,7 +109,7 @@ Workflow em `.github/workflows/backend-ci-cd.yml`.
 
 - pull request e push no backend executam testes
 - push na `main` publica imagem no GHCR
-- push na `main` com secrets de deploy executa deploy remoto
+- push na `main` com secrets de deploy atualiza a stack completa via `scripts/deploy-release.sh`
 
 ## Credenciais locais padrão
 
