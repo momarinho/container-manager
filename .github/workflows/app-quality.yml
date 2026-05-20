@@ -1,0 +1,112 @@
+name: App Quality
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "shared/**"
+      - "scripts/**"
+      - "docker-compose.yml"
+      - ".dockerignore"
+      - ".env.example"
+      - ".github/workflows/app-quality.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "shared/**"
+      - "scripts/**"
+      - "docker-compose.yml"
+      - ".dockerignore"
+      - ".env.example"
+      - ".github/workflows/app-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && pip install -e .
+
+      - name: Run backend tests
+        run: python -m unittest discover -s tests -v
+
+  frontend-verify:
+    name: Frontend verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Verify frontend
+        run: npm run verify
+
+  smoke-e2e:
+    name: Smoke end-to-end
+    runs-on: ubuntu-latest
+    needs:
+      - backend-tests
+      - frontend-verify
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment files
+        run: |
+          cp .env.example .env
+          cp backend/.env.example backend/.env
+          {
+            echo "BACKEND_HOST_PORT=3300"
+            echo "FRONTEND_WEB_HOST_PORT=8181"
+          } >> .env
+
+      - name: Build and start stack
+        run: docker compose up -d --build
+
+      - name: Run smoke test
+        env:
+          BACKEND_URL: http://127.0.0.1:3300
+          FRONTEND_URL: http://127.0.0.1:8181
+          SMOKE_TIMEOUT_MS: 180000
+          SMOKE_READY_TIMEOUT_MS: 240000
+        run: node scripts/smoke-test.mjs
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v

@@ -92,4 +92,6 @@ npm run web
 npm run android
 npm run ios
 npm run lint
+npm run typecheck
+npm run verify
 ```

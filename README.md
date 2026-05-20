@@ -107,8 +107,7 @@ Frontend:
 
 ```bash
 cd frontend
-npm run lint
-npx tsc --noEmit
+npm run verify
 ```
 
 Backend:
@@ -118,11 +117,20 @@ cd backend
 ./.venv/bin/python -m unittest discover -s tests -v
 ```
 
+Smoke end-to-end da stack:
+
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+BACKEND_HOST_PORT=3300 FRONTEND_WEB_HOST_PORT=8181 docker compose up -d --build
+BACKEND_URL=http://127.0.0.1:3300 FRONTEND_URL=http://127.0.0.1:8181 node scripts/smoke-test.mjs
+docker compose down -v
+```
+
 ## Pendências principais
 
 - gestão dedicada de volumes e redes além da criação
-- smoke tests ponta a ponta do fluxo completo
-- pipeline dedicada para o frontend
+- fluxo de release consolidado entre backend e frontend
 
 ## Variáveis importantes
 

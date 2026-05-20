@@ -16,53 +16,36 @@ Provides-Extra: dev
 
 # ContainerMaster Backend
 
-Backend oficial do ContainerMaster em Python, preservando o contrato atual de REST e WebSocket para facilitar a integração com o frontend existente.
-
-## Stack
-
-- FastAPI
-- Docker SDK for Python
-- psutil
-- PyJWT
-- bcrypt
+Backend FastAPI do Container Manager, responsável por autenticação, integração com Docker, métricas do host, terminal, logs e status de túnel.
 
 ## Recursos implementados
 
 - `GET /health`
 - `POST /api/auth/login`
-- `GET /api/auth/verify`
 - `GET|POST /api/auth/validate`
+- `GET /api/auth/verify`
 - `GET /api/containers`
+- `POST /api/containers`
+- `POST /api/containers/validate-image`
 - `GET /api/containers/:id`
-- `POST /api/containers/:id/start`
-- `POST /api/containers/:id/stop`
-- `POST /api/containers/:id/restart`
-- `POST /api/containers/:id/pause`
-- `POST /api/containers/:id/unpause`
+- `POST /api/containers/:id/start|stop|restart|pause|unpause`
 - `DELETE /api/containers/:id`
 - `GET /api/containers/:id/stats`
 - `POST /api/containers/:id/exec`
 - `GET /api/system/stats`
 - `GET /api/system/stats/history`
 - `GET /api/system/info`
+- `GET /api/tunnel/status`
+- `POST /api/tunnel/connect`
+- `POST /api/tunnel/disconnect`
+- `WS /ws/stats`
 - `WS /ws/logs/:containerId`
 - `WS /ws/terminal/:containerId`
-- `WS /ws/stats`
+- `WS /ws/tunnel`
 
-## Observações de compatibilidade
+Swagger em `GET /docs`.
 
-- O envelope HTTP continua sendo `success/data/error`.
-- Os canais WebSocket mantêm os tipos de mensagem consumidos pelo frontend atual.
-- O campo `nodeVersion` em `/api/system/info` foi mantido por compatibilidade, mas agora retorna a versão do Python.
-
-## Documentação da API (Swagger)
-
-- Swagger UI: `GET /docs`
-- OpenAPI JSON: `GET /openapi.json`
-
-Os endpoints estão organizados por tags (`Health`, `Auth`, `Containers`, `System`, `Tunnel`) para facilitar navegação e integração.
-
-## Desenvolvimento
+## Desenvolvimento local
 
 ```bash
 cp .env.example .env
@@ -72,67 +55,73 @@ pip install -e .
 uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
 ```
 
-### Testes unitários
+## Desenvolvimento com Docker
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+## Stack completa pela raiz
+
+```bash
+cd ..
+cp .env.example .env
+cp backend/.env.example backend/.env
+./scripts/docker-up.sh
+```
+
+Isso sobe o backend em `http://localhost:3000` e o frontend web em `http://localhost:8081`.
+Nessa stack, o backend roda com reload e acesso direto ao socket Docker do host para desenvolvimento local.
+
+Se `3000` ou `8081` já estiverem ocupadas, o script procura a proxima porta livre automaticamente.
+
+Para fixar portas manualmente no `.env` da raiz:
+
+```bash
+BACKEND_HOST_PORT=3001
+FRONTEND_WEB_HOST_PORT=8082
+```
+
+## Testes
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-## Guia de instalação (produção)
+Os testes de API não exigem acesso ao Docker apenas para importar a aplicação. Quando um cenário precisar do engine real, o socket configurado em `DOCKER_SOCKET_PATH` deve estar acessível.
 
-Pré-requisitos:
-- Docker Engine + Docker Compose plugin
-- Acesso ao socket Docker no host (`/var/run/docker.sock`)
-- Arquivo `.env` preenchido (principalmente `JWT_SECRET`)
+## Produção
 
-Passos:
 ```bash
 cp .env.example .env
-# ajuste JWT_SECRET e variáveis necessárias
 docker compose pull
 docker compose up -d
 ```
 
 Healthcheck:
+
 ```bash
 curl --fail http://localhost:3000/health
 ```
 
-## Docker (desenvolvimento)
+## Variáveis importantes
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
+- `PORT=3000`
+- `JWT_SECRET=...`
+- `DOCKER_SOCKET_PATH=/var/run/docker.sock`
+- `API_TOKENS=token1,token2`
+- `TAILSCALE_CLI_PATH=tailscale`
 
-## Scripts de deploy
+## CI/CD
 
-Deploy padrão (usa `IMAGE_NAME` e `IMAGE_TAG` do ambiente):
-```bash
-./scripts/deploy.sh
-```
+Workflow em `.github/workflows/backend-ci-cd.yml`.
 
-Esperar saúde da API:
-```bash
-./scripts/wait-for-health.sh
-```
+- pull request e push no backend executam testes
+- push na `main` publica imagem no GHCR
+- push na `main` com secrets de deploy executa deploy remoto
 
-## CI/CD pipeline
+## Credenciais locais padrão
 
-Workflow: `.github/workflows/backend-ci-cd.yml` (na raiz do repositório).
-
-Fluxo:
-- Pull Request / Push: executa testes unitários do backend
-- Push na `main`: builda imagem Docker e publica no GHCR
-- Push na `main` + secrets de deploy: executa deploy remoto por SSH
-
-Secrets opcionais para deploy remoto:
-- `DEPLOY_HOST`
-- `DEPLOY_USER`
-- `DEPLOY_SSH_KEY`
-- `DEPLOY_PATH` (opcional, default: `~/container-manager`)
-- `DEPLOY_BRANCH` (opcional, default: `main`)
-
-## Credenciais padrão
-
-- Usuário: `alice`
-- Senha: `password123`
+- usuário: `alice`
+- senha: `password123`

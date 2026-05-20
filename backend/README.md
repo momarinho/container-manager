@@ -73,7 +73,8 @@ FRONTEND_WEB_HOST_PORT=8082
 python -m unittest discover -s tests -v
 ```
 
-Os testes de API não exigem acesso ao Docker apenas para importar a aplicação. Quando um cenário precisar do engine real, o socket configurado em `DOCKER_SOCKET_PATH` deve estar acessível.
+Os testes cobrem auth, utilitários HTTP, fluxo de containers, tunnel e websockets com mocks.
+Os cenários de API não exigem acesso ao Docker apenas para importar a aplicação. Quando um cenário precisar do engine real, o socket configurado em `DOCKER_SOCKET_PATH` deve estar acessível.
 
 ## Produção
 

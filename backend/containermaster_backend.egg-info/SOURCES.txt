@@ -23,3 +23,4 @@ containermaster_backend.egg-info/top_level.txt
 tests/test_auth_service.py
 tests/test_http_utils.py
 tests/test_main_api.py
+tests/test_websocket_api.py
