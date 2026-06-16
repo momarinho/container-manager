@@ -21,6 +21,7 @@ import {
   Search as SearchIcon,
   Settings,
   Square,
+  Users,
 } from "lucide-react-native";
 import { Colors } from "../../constants/Colors";
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -274,6 +275,12 @@ export default function DashboardScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
             <LogOut size={20} color={Colors.outline} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push("/users" as any)}
+          >
+            <Users size={20} color={Colors.outline} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerButton}

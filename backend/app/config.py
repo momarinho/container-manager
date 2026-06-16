@@ -65,6 +65,7 @@ class AppConfig:
     tailscale_accept_dns: bool
     tailscale_accept_routes: bool
     tailscale_advertise_tags: tuple[str, ...]
+    database_path: str
 
 
 def load_config() -> AppConfig:
@@ -116,6 +117,7 @@ def load_config() -> AppConfig:
         tailscale_accept_dns=_get_bool("TAILSCALE_ACCEPT_DNS", False),
         tailscale_accept_routes=_get_bool("TAILSCALE_ACCEPT_ROUTES", False),
         tailscale_advertise_tags=_get_csv("TAILSCALE_ADVERTISE_TAGS"),
+        database_path=os.getenv("DATABASE_PATH", "database.db"),
     )
 
 

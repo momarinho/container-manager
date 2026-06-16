@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.websockets import WebSocketDisconnect
 
 from app.config import config
+from app.database import db_manager
 from app.models import (
     CreateContainerRequest,
     ExecRequest,
@@ -38,6 +39,7 @@ from app.utils.logger import logger
 API_TAGS = [
     {"name": "Health", "description": "Healthcheck and uptime information."},
     {"name": "Auth", "description": "Authentication and token validation endpoints."},
+    {"name": "Users", "description": "Dynamic user management and credentials."},
     {
         "name": "Containers",
         "description": "Container lifecycle and execution operations.",
@@ -106,6 +108,7 @@ tunnel_service = TunnelService()
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    db_manager.init_db()
     app.state.started_at = time.monotonic()
     system_stats_service.start()
     terminal_service.start()
@@ -679,6 +682,49 @@ async def disconnect_tunnel(request: Request):
         return error_response(
             500, "TUNNEL_DISCONNECT_FAILED", "Failed to disconnect tunnel"
         )
+
+
+@app.get("/api/users", tags=["Users"], summary="List users")
+async def list_users(request: Request):
+    require_http_user(request)
+    users = auth_service.list_users()
+    return success_payload([
+        {
+            "id": u["id"],
+            "username": u["username"],
+            "createdAt": u["created_at"]
+        } for u in users
+    ])
+
+
+@app.post("/api/users", tags=["Users"], summary="Create user")
+async def create_user(request: Request, body: dict[str, str] = Body(...)):
+    require_http_user(request)
+    username = body.get("username")
+    password = body.get("password")
+    if not username or not password:
+        return error_response(400, "USER_CREATE_FAILED", "Username and password are required")
+    try:
+        user = auth_service.create_user(username, password)
+        return success_payload({
+            "id": user["id"],
+            "username": user["username"],
+            "createdAt": user["created_at"]
+        })
+    except ValueError as exc:
+        return error_response(400, "USER_CREATE_FAILED", str(exc))
+
+
+@app.delete("/api/users/{username}", tags=["Users"], summary="Delete user")
+async def delete_user(request: Request, username: str):
+    require_http_user(request)
+    try:
+        deleted = auth_service.delete_user(username)
+        if not deleted:
+            return error_response(404, "USER_NOT_FOUND", "User not found")
+        return success_payload({"deleted": True})
+    except ValueError as exc:
+        return error_response(400, "USER_DELETE_FAILED", str(exc))
 
 
 async def authenticate_websocket(websocket: WebSocket) -> dict[str, str] | None:

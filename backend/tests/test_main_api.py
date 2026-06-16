@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from docker.errors import APIError
 import httpx
 os.environ.setdefault("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+os.environ.setdefault("DATABASE_PATH", "test_database.db")
 
 from app import main
 
@@ -339,6 +340,56 @@ class MainApiTests(unittest.TestCase):
         self.assertEqual(body["success"], False)
         self.assertEqual(body["error"]["code"], "RATE_LIMIT_EXCEEDED")
         self.assertIn("retryAfter", body["error"]["details"])
+
+    def test_list_users_returns_existing_users(self) -> None:
+        response = self.request("GET", "/api/users", headers=self._auth_headers())
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["success"])
+        usernames = [u["username"] for u in body["data"]]
+        self.assertIn("alice", usernames)
+
+    def test_create_and_delete_user_via_api(self) -> None:
+        response = self.request(
+            "POST",
+            "/api/users",
+            headers=self._auth_headers(),
+            json={"username": "temp-user", "password": "temp-password"}
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["data"]["username"], "temp-user")
+        self.assertIsNotNone(body["data"]["id"])
+
+        del_response = self.request(
+            "DELETE",
+            "/api/users/temp-user",
+            headers=self._auth_headers()
+        )
+        self.assertEqual(del_response.status_code, 200)
+        del_body = del_response.json()
+        self.assertTrue(del_body["data"]["deleted"])
+
+    def test_create_user_requires_both_fields(self) -> None:
+        response = self.request(
+            "POST",
+            "/api/users",
+            headers=self._auth_headers(),
+            json={"username": "only-user"}
+        )
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body["error"]["code"], "USER_CREATE_FAILED")
+
+    def test_delete_alice_is_forbidden(self) -> None:
+        response = self.request(
+            "DELETE",
+            "/api/users/alice",
+            headers=self._auth_headers()
+        )
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body["error"]["code"], "USER_DELETE_FAILED")
 
 
 if __name__ == "__main__":

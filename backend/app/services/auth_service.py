@@ -1,33 +1,22 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+import time
+import uuid
 import bcrypt
 
 from app.config import config
+from app.database import db_manager
 from app.models import AuthResponse, AuthUser
 from app.security import expiration_to_milliseconds, sign_jwt, verify_jwt
 
 
-@dataclass(frozen=True)
-class StoredUser:
-    id: str
-    username: str
-    password_hash: bytes
-
-
 class AuthService:
-    def __init__(self) -> None:
-        self._users = {
-            "alice": StoredUser(
-                id="u1",
-                username="alice",
-                password_hash=bcrypt.hashpw(
-                    b"password123",
-                    bcrypt.gensalt(rounds=10),
-                ),
-            )
-        }
+    def get_user_by_username(self, username: str) -> dict | None:
+        with db_manager.get_connection() as conn:
+            row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+            if row:
+                return dict(row)
+        return None
 
     def validate_credentials(
         self,
@@ -39,10 +28,11 @@ class AuthService:
             return api_token in config.api_tokens
 
         if username and password:
-            user = self._users.get(username)
+            user = self.get_user_by_username(username)
             if not user:
                 return False
-            return bcrypt.checkpw(password.encode("utf-8"), user.password_hash)
+            pwd_hash_str = user["password_hash"]
+            return bcrypt.checkpw(password.encode("utf-8"), pwd_hash_str.encode("utf-8"))
 
         return False
 
@@ -52,6 +42,12 @@ class AuthService:
     def build_login_response(self, username: str | None = None) -> AuthResponse:
         user_id = username or "api-user"
         resolved_username = username or "api-user"
+        
+        if username:
+            user = self.get_user_by_username(username)
+            if user:
+                user_id = user["id"]
+
         token = self.generate_token(user_id, resolved_username)
         return AuthResponse(
             token=token,
@@ -71,6 +67,43 @@ class AuthService:
             }
         except (KeyError, ValueError):
             return None
+
+    def list_users(self) -> list[dict]:
+        with db_manager.get_connection() as conn:
+            rows = conn.execute("SELECT id, username, created_at FROM users").fetchall()
+            return [dict(row) for row in rows]
+
+    def create_user(self, username: str, password_plain: str) -> dict:
+        if not username or not password_plain:
+            raise ValueError("Username and password are required")
+        if self.get_user_by_username(username):
+            raise ValueError("User already exists")
+
+        user_id = str(uuid.uuid4())
+        password_hash = bcrypt.hashpw(
+            password_plain.encode("utf-8"),
+            bcrypt.gensalt(rounds=10)
+        ).decode("utf-8")
+        created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        with db_manager.get_connection() as conn:
+            conn.execute(
+                "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
+                (user_id, username, password_hash, created_at)
+            )
+            conn.commit()
+
+        return {"id": user_id, "username": username, "created_at": created_at}
+
+    def delete_user(self, username: str) -> bool:
+        if username == "alice":
+            raise ValueError("Cannot delete default admin user 'alice'")
+
+        with db_manager.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM users WHERE username = ?", (username,))
+            conn.commit()
+            return cursor.rowcount > 0
 
 
 auth_service = AuthService()
