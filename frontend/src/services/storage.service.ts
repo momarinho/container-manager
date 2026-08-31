@@ -1,23 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import SInfo from "react-native-sensitive-info";
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 import type { ServerConfig, AuthResponse } from "../types/auth.types";
 
 const STORAGE_KEYS = {
-  TOKEN: "@containermaster_token",
+  TOKEN: "containermaster_token",
   SERVER: "@containermaster_server",
   SERVERS: "@containermaster_servers",
   ACTIVE_SERVER_ID: "@containermaster_active_server_id",
   USER: "@containermaster_user",
 };
 
-// Para iOS/Android - usa Keychain/Keystore
-// Para Web/Expo Go - usa AsyncStorage (menos seguro)
-const useSecureStorage = false;
-
-const SensitiveInfoOptions = {
-  sharedPreferencesName: "ContainerMaster",
-  keychainService: "ContainerMasterKeychain",
-};
+// Identifica se a plataforma é nativa (iOS/Android) para uso do Keychain/Keystore
+const isNative = Platform.OS === "ios" || Platform.OS === "android";
 
 async function readJson<T>(key: string): Promise<T | null> {
   const data = await AsyncStorage.getItem(key);
@@ -49,48 +44,38 @@ async function readServerList(): Promise<ServerConfig[]> {
 }
 
 export const storageService = {
-  // Salvar token (secure em produção)
+  // Salvar token com criptografia de hardware no iOS/Android, ou fallback no Web
   async saveToken(token: string): Promise<void> {
-    if (useSecureStorage) {
-      try {
-        await SInfo.setItem(STORAGE_KEYS.TOKEN, token, SensitiveInfoOptions);
-      } catch (error) {
-        console.warn(
-          "Secure token storage unavailable, falling back to AsyncStorage",
-          error,
-        );
-      }
+    if (isNative) {
+      await SecureStore.setItemAsync(STORAGE_KEYS.TOKEN, token, {
+        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+      });
+      return;
     }
 
+    // Fallback para Web
     await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
   },
 
-  // Recuperar token
+  // Recuperar token de forma segura
   async getToken(): Promise<string | null> {
-    if (useSecureStorage) {
-      try {
-        const secureToken = await SInfo.getItem(
-          STORAGE_KEYS.TOKEN,
-          SensitiveInfoOptions,
-        );
-
-        if (secureToken) {
-          return secureToken;
-        }
-      } catch {
-        // fallback para AsyncStorage abaixo
-      }
+    if (isNative) {
+      return await SecureStore.getItemAsync(STORAGE_KEYS.TOKEN);
     }
 
-    return AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+    // Fallback para Web
+    return await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
   },
 
   // Remover token
   async removeToken(): Promise<void> {
-    await Promise.allSettled([
-      AsyncStorage.removeItem(STORAGE_KEYS.TOKEN),
-      SInfo.deleteItem(STORAGE_KEYS.TOKEN, SensitiveInfoOptions),
-    ]);
+    if (isNative) {
+      await SecureStore.deleteItemAsync(STORAGE_KEYS.TOKEN);
+      return;
+    }
+
+    // Fallback para Web
+    await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
   },
 
   // Salvar configuração do servidor
