@@ -1,10 +1,12 @@
 import os
 import sqlite3
 import time
-import uuid
+
 import bcrypt
+
 from app.config import config
 from app.utils.logger import logger
+
 
 class DatabaseManager:
     def __init__(self, db_path: str):
@@ -44,16 +46,16 @@ class DatabaseManager:
                 logger.info("Seeding default user 'alice'")
                 user_id = "u1"
                 username = "alice"
-                password_hash = bcrypt.hashpw(
-                    b"password123",
-                    bcrypt.gensalt(rounds=10)
-                ).decode("utf-8")
+                password_hash = bcrypt.hashpw(b"password123", bcrypt.gensalt(rounds=10)).decode(
+                    "utf-8"
+                )
                 created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
                 conn.execute(
                     "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
-                    (user_id, username, password_hash, created_at)
+                    (user_id, username, password_hash, created_at),
                 )
                 conn.commit()
+
 
 db_manager = DatabaseManager(config.database_path)

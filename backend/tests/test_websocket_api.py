@@ -71,13 +71,9 @@ class WebSocketApiTests(unittest.TestCase):
         self.token = auth_service.generate_token("u1", "alice")
         self.stack = ExitStack()
         self.stack.enter_context(patch.object(main.system_stats_service, "start", Mock()))
-        self.stack.enter_context(
-            patch.object(main.system_stats_service, "stop", AsyncMock())
-        )
+        self.stack.enter_context(patch.object(main.system_stats_service, "stop", AsyncMock()))
         self.stack.enter_context(patch.object(main.terminal_service, "start", Mock()))
-        self.stack.enter_context(
-            patch.object(main.terminal_service, "stop", AsyncMock())
-        )
+        self.stack.enter_context(patch.object(main.terminal_service, "stop", AsyncMock()))
         self.stack.enter_context(patch.object(main.tunnel_service, "start", Mock()))
         self.stack.enter_context(patch.object(main.tunnel_service, "stop", AsyncMock()))
         self.client = self.stack.enter_context(TestClient(main.app))
@@ -128,14 +124,14 @@ class WebSocketApiTests(unittest.TestCase):
         docker_service = Mock()
         docker_service.open_log_stream.return_value = FakeLogStream(b"hello\n")
 
-        with patch.object(main, "get_docker_service", return_value=docker_service):
-            with self.client.websocket_connect(
-                f"/ws/logs/container-1?token={self.token}"
-            ) as websocket:
-                connected = websocket.receive_json()
-                log_event = websocket.receive_json()
-                websocket.send_json({"action": "unsubscribe"})
-                unsubscribed = websocket.receive_json()
+        with (
+            patch.object(main, "get_docker_service", return_value=docker_service),
+            self.client.websocket_connect(f"/ws/logs/container-1?token={self.token}") as websocket,
+        ):
+            connected = websocket.receive_json()
+            log_event = websocket.receive_json()
+            websocket.send_json({"action": "unsubscribe"})
+            unsubscribed = websocket.receive_json()
 
         self.assertEqual(connected["type"], "connected")
         self.assertEqual(connected["containerId"], "container-1")
@@ -147,20 +143,20 @@ class WebSocketApiTests(unittest.TestCase):
     def test_terminal_websocket_forwards_start_input_resize_and_close(self) -> None:
         terminal_service = FakeTerminalService()
 
-        with patch.object(main, "terminal_service", terminal_service):
-            with self.client.websocket_connect(
+        with (
+            patch.object(main, "terminal_service", terminal_service),
+            self.client.websocket_connect(
                 f"/ws/terminal/container-1?token={self.token}"
-            ) as websocket:
-                ready = websocket.receive_json()
-                websocket.send_json(
-                    {"action": "start", "shell": "/bin/sh", "cols": 120, "rows": 40}
-                )
-                started = websocket.receive_json()
-                websocket.send_json({"action": "input", "input": "echo smoke\n"})
-                output = websocket.receive_json()
-                websocket.send_json({"action": "resize", "cols": 100, "rows": 30})
-                websocket.send_json({"action": "close"})
-                closed = websocket.receive_json()
+            ) as websocket,
+        ):
+            ready = websocket.receive_json()
+            websocket.send_json({"action": "start", "shell": "/bin/sh", "cols": 120, "rows": 40})
+            started = websocket.receive_json()
+            websocket.send_json({"action": "input", "input": "echo smoke\n"})
+            output = websocket.receive_json()
+            websocket.send_json({"action": "resize", "cols": 100, "rows": 30})
+            websocket.send_json({"action": "close"})
+            closed = websocket.receive_json()
 
         self.assertEqual(ready["type"], "ready")
         self.assertEqual(started["type"], "started")

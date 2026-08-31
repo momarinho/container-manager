@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -37,7 +37,7 @@ def expiration_to_milliseconds(expiration: str) -> int:
 
 
 def sign_jwt(payload: dict[str, Any]) -> str:
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    expires_at = datetime.now(UTC) + timedelta(
         seconds=_parse_expiration_seconds(config.jwt_expires_in)
     )
     token_payload = {
@@ -64,4 +64,4 @@ def get_bearer_token(authorization: str | None) -> str | None:
 
 
 def utc_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()

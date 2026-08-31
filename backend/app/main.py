@@ -8,7 +8,6 @@ from threading import Event, Lock
 from typing import Any
 from uuid import uuid4
 
-import docker
 from docker.errors import APIError
 from fastapi import Body, FastAPI, Request, Response, WebSocket
 from fastapi.exceptions import RequestValidationError
@@ -203,9 +202,7 @@ async def app_exception_handler(_request: Request, exc: AppError) -> JSONRespons
 
 
 @app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(
-    request: Request, exc: StarletteHTTPException
-) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     if exc.status_code == 404:
         return error_response(404, "NOT_FOUND", "Not found", {"path": request.url.path})
     return error_response(
@@ -216,14 +213,10 @@ async def http_exception_handler(
 
 
 @app.exception_handler(Exception)
-async def unhandled_exception_handler(
-    _request: Request, exc: Exception
-) -> JSONResponse:
+async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled exception: %s", exc)
     details = {"message": str(exc)} if config.node_env == "development" else None
-    return error_response(
-        500, "INTERNAL_SERVER_ERROR", "Internal server error", details
-    )
+    return error_response(500, "INTERNAL_SERVER_ERROR", "Internal server error", details)
 
 
 def require_http_user(request: Request) -> dict[str, str]:
@@ -326,26 +319,19 @@ async def list_containers(
         docker_service = get_docker_service()
         containers = await asyncio.to_thread(docker_service.list_containers, all)
         if status:
-            containers = [
-                container for container in containers if container["state"] == status
-            ]
+            containers = [container for container in containers if container["state"] == status]
         if name:
             needle = name.lower()
             containers = [
                 container
                 for container in containers
-                if any(
-                    needle in container_name.lower()
-                    for container_name in container["names"]
-                )
+                if any(needle in container_name.lower() for container_name in container["names"])
                 or needle in container["image"].lower()
             ]
         return success_payload(containers, {"count": len(containers)})
     except Exception:
         logger.exception("Failed to list containers")
-        return error_response(
-            500, "CONTAINERS_LIST_FAILED", "Failed to list containers"
-        )
+        return error_response(500, "CONTAINERS_LIST_FAILED", "Failed to list containers")
 
 
 @app.post(
@@ -364,9 +350,7 @@ async def validate_container_image(request: Request, payload: ValidateImageReque
         return error_response(400, "IMAGE_VALIDATION_FAILED", str(exc))
     except Exception:
         logger.exception("Failed to validate image %s", payload.image)
-        return error_response(
-            500, "IMAGE_VALIDATION_FAILED", "Failed to validate image"
-        )
+        return error_response(500, "IMAGE_VALIDATION_FAILED", "Failed to validate image")
 
 
 @app.post("/api/containers", tags=["Containers"], summary="Create container")
@@ -394,9 +378,7 @@ async def create_container(request: Request, payload: CreateContainerRequest):
         )
     except Exception:
         logger.exception("Failed to create container")
-        return error_response(
-            500, "CONTAINER_CREATE_FAILED", "Failed to create container"
-        )
+        return error_response(500, "CONTAINER_CREATE_FAILED", "Failed to create container")
 
 
 @app.get("/api/containers/{container_id}", tags=["Containers"], summary="Get container")
@@ -530,9 +512,7 @@ async def remove_container(
         return success_payload({"id": container_id, "message": "Container removed"})
     except Exception:
         logger.exception("Failed to remove container %s", container_id)
-        return error_response(
-            500, "CONTAINER_REMOVE_FAILED", "Failed to remove container"
-        )
+        return error_response(500, "CONTAINER_REMOVE_FAILED", "Failed to remove container")
 
 
 @app.get(
@@ -558,15 +538,11 @@ async def get_container_stats(request: Request, container_id: str):
                 {"state": current_status or "unknown"},
             )
 
-        stats = await asyncio.to_thread(
-            docker_service.get_container_stats, container_id
-        )
+        stats = await asyncio.to_thread(docker_service.get_container_stats, container_id)
         return success_payload(stats)
     except Exception:
         logger.exception("Failed to get stats for container %s", container_id)
-        return error_response(
-            500, "CONTAINER_STATS_FAILED", "Failed to get container stats"
-        )
+        return error_response(500, "CONTAINER_STATS_FAILED", "Failed to get container stats")
 
 
 @app.post(
@@ -582,9 +558,7 @@ async def exec_in_container(
     require_http_user(request)
 
     if not payload.cmd:
-        return error_response(
-            400, "INVALID_EXEC_COMMAND", "cmd is required and must be an array"
-        )
+        return error_response(400, "INVALID_EXEC_COMMAND", "cmd is required and must be an array")
 
     try:
         docker_service = get_docker_service()
@@ -620,9 +594,7 @@ async def get_stats_history(request: Request, limit: int | None = None):
         return success_payload(history)
     except Exception:
         logger.exception("Failed to get stats history")
-        return error_response(
-            500, "SYSTEM_STATS_HISTORY_FAILED", "Failed to get stats history"
-        )
+        return error_response(500, "SYSTEM_STATS_HISTORY_FAILED", "Failed to get stats history")
 
 
 @app.get("/api/system/info", tags=["System"], summary="Get host system information")
@@ -646,9 +618,7 @@ async def get_tunnel_status(request: Request):
         return success_payload(status)
     except Exception:
         logger.exception("Failed to get tunnel status")
-        return error_response(
-            500, "TUNNEL_STATUS_FAILED", "Failed to get tunnel status"
-        )
+        return error_response(500, "TUNNEL_STATUS_FAILED", "Failed to get tunnel status")
 
 
 @app.post("/api/tunnel/connect", tags=["Tunnel"], summary="Connect tunnel provider")
@@ -679,22 +649,16 @@ async def disconnect_tunnel(request: Request):
         return success_payload(status)
     except Exception:
         logger.exception("Failed to disconnect tunnel")
-        return error_response(
-            500, "TUNNEL_DISCONNECT_FAILED", "Failed to disconnect tunnel"
-        )
+        return error_response(500, "TUNNEL_DISCONNECT_FAILED", "Failed to disconnect tunnel")
 
 
 @app.get("/api/users", tags=["Users"], summary="List users")
 async def list_users(request: Request):
     require_http_user(request)
     users = auth_service.list_users()
-    return success_payload([
-        {
-            "id": u["id"],
-            "username": u["username"],
-            "createdAt": u["created_at"]
-        } for u in users
-    ])
+    return success_payload(
+        [{"id": u["id"], "username": u["username"], "createdAt": u["created_at"]} for u in users]
+    )
 
 
 @app.post("/api/users", tags=["Users"], summary="Create user")
@@ -706,11 +670,9 @@ async def create_user(request: Request, body: dict[str, str] = Body(...)):
         return error_response(400, "USER_CREATE_FAILED", "Username and password are required")
     try:
         user = auth_service.create_user(username, password)
-        return success_payload({
-            "id": user["id"],
-            "username": user["username"],
-            "createdAt": user["created_at"]
-        })
+        return success_payload(
+            {"id": user["id"], "username": user["username"], "createdAt": user["created_at"]}
+        )
     except ValueError as exc:
         return error_response(400, "USER_CREATE_FAILED", str(exc))
 
@@ -731,9 +693,7 @@ async def authenticate_websocket(websocket: WebSocket) -> dict[str, str] | None:
     await websocket.accept()
     token = websocket.query_params.get("token")
     if not token:
-        await websocket.send_json(
-            {"type": "error", "message": "Authentication required"}
-        )
+        await websocket.send_json({"type": "error", "message": "Authentication required"})
         await websocket.close(code=1008, reason="Authentication required")
         return None
 
@@ -804,9 +764,7 @@ async def websocket_logs(websocket: WebSocket, container_id: str) -> None:
     loop = asyncio.get_running_loop()
     try:
         docker_service = get_docker_service()
-        log_stream = await asyncio.to_thread(
-            docker_service.open_log_stream, container_id
-        )
+        log_stream = await asyncio.to_thread(docker_service.open_log_stream, container_id)
     except Exception as exc:
         await websocket.send_json({"type": "error", "message": str(exc)})
         await websocket.close(code=1011, reason="Log stream failed")
@@ -839,9 +797,7 @@ async def websocket_logs(websocket: WebSocket, container_id: str) -> None:
             if event is None:
                 break
             if event["type"] == "error":
-                await websocket.send_json(
-                    {"type": "error", "message": event["message"]}
-                )
+                await websocket.send_json({"type": "error", "message": event["message"]})
                 continue
             await websocket.send_json(
                 {
@@ -884,9 +840,7 @@ async def websocket_terminal(websocket: WebSocket, container_id: str) -> None:
 
     active_session_id: str | None = None
     forward_task: asyncio.Task[None] | None = None
-    await websocket.send_json(
-        {"type": "ready", "message": "Send shell command to start session"}
-    )
+    await websocket.send_json({"type": "ready", "message": "Send shell command to start session"})
 
     async def forward_events(session_id: str) -> None:
         nonlocal active_session_id, forward_task
@@ -895,9 +849,7 @@ async def websocket_terminal(websocket: WebSocket, container_id: str) -> None:
             event = await queue.get()
             event_type = event.get("type")
             if event_type == "output":
-                await websocket.send_json(
-                    {"type": "output", "data": event.get("data", "")}
-                )
+                await websocket.send_json({"type": "output", "data": event.get("data", "")})
             elif event_type == "error":
                 await websocket.send_json(
                     {
@@ -945,15 +897,11 @@ async def websocket_terminal(websocket: WebSocket, container_id: str) -> None:
                     user["username"],
                     shell,
                 )
-                await websocket.send_json(
-                    {"type": "started", "sessionId": active_session_id}
-                )
+                await websocket.send_json({"type": "started", "sessionId": active_session_id})
 
             elif action == "input" and active_session_id:
                 try:
-                    terminal_service.write(
-                        active_session_id, str(payload.get("input", ""))
-                    )
+                    terminal_service.write(active_session_id, str(payload.get("input", "")))
                 except Exception as exc:
                     await websocket.send_json({"type": "error", "message": str(exc)})
 

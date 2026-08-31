@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
+
 import bcrypt
 
 from app.config import config
@@ -42,7 +43,7 @@ class AuthService:
     def build_login_response(self, username: str | None = None) -> AuthResponse:
         user_id = username or "api-user"
         resolved_username = username or "api-user"
-        
+
         if username:
             user = self.get_user_by_username(username)
             if user:
@@ -81,15 +82,14 @@ class AuthService:
 
         user_id = str(uuid.uuid4())
         password_hash = bcrypt.hashpw(
-            password_plain.encode("utf-8"),
-            bcrypt.gensalt(rounds=10)
+            password_plain.encode("utf-8"), bcrypt.gensalt(rounds=10)
         ).decode("utf-8")
         created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         with db_manager.get_connection() as conn:
             conn.execute(
                 "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
-                (user_id, username, password_hash, created_at)
+                (user_id, username, password_hash, created_at),
             )
             conn.commit()
 

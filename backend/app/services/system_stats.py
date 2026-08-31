@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import platform
 import time
-from collections.abc import Callable
 from collections import deque
+from collections.abc import Callable
 from typing import Any
 
 import psutil
@@ -33,10 +34,8 @@ class SystemStatsService:
     async def stop(self) -> None:
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
 
     def get_current_stats(self) -> dict[str, Any]:
@@ -93,9 +92,15 @@ class SystemStatsService:
             "diskUsed": self._format_bytes(disk.used),
             "diskTotal": self._format_bytes(disk.total),
             "containers": {
-                "running": len([container for container in containers if container["state"] == "running"]),
-                "stopped": len([container for container in containers if container["state"] == "exited"]),
-                "paused": len([container for container in containers if container["state"] == "paused"]),
+                "running": len(
+                    [container for container in containers if container["state"] == "running"]
+                ),
+                "stopped": len(
+                    [container for container in containers if container["state"] == "exited"]
+                ),
+                "paused": len(
+                    [container for container in containers if container["state"] == "paused"]
+                ),
                 "total": len(containers),
             },
             "loadAvg": per_cpu if per_cpu else [0, 0, 0],

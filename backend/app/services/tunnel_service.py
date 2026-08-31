@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import subprocess
 import time
@@ -28,10 +29,8 @@ class TunnelService:
     async def stop(self) -> None:
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
 
     def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
@@ -123,9 +122,7 @@ class TunnelService:
             queue.put_nowait(self._last_status)
         return self._last_status
 
-    async def connect(
-        self, auth_key: str | None, hostname: str | None
-    ) -> dict[str, Any]:
+    async def connect(self, auth_key: str | None, hostname: str | None) -> dict[str, Any]:
         args = [
             "up",
             f"--hostname={hostname or config.tailscale_hostname}",

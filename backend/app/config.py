@@ -14,7 +14,6 @@ else:
     load_dotenv(find_dotenv(usecwd=True))
 
 
-
 def _get_int(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None or value == "":
@@ -30,9 +29,7 @@ def _get_bool(name: str, default: bool) -> bool:
 
 
 def _get_csv(name: str) -> tuple[str, ...]:
-    return tuple(
-        item.strip() for item in os.getenv(name, "").split(",") if item.strip()
-    )
+    return tuple(item.strip() for item in os.getenv(name, "").split(",") if item.strip())
 
 
 @dataclass(frozen=True)
@@ -81,9 +78,7 @@ def load_config() -> AppConfig:
         raise ValueError("JWT_SECRET must be at least 32 characters")
 
     api_tokens = tuple(
-        token.strip()
-        for token in os.getenv("API_TOKENS", "").split(",")
-        if token.strip()
+        token.strip() for token in os.getenv("API_TOKENS", "").split(",") if token.strip()
     )
 
     return AppConfig(
@@ -114,9 +109,7 @@ def load_config() -> AppConfig:
         tunnel_provider=os.getenv("TUNNEL_PROVIDER", "tailscale"),
         tunnel_status_poll_interval=_get_int("TUNNEL_STATUS_POLL_INTERVAL", 5000),
         tailscale_cli_path=os.getenv("TAILSCALE_CLI_PATH", "tailscale"),
-        tailscale_api_base_url=os.getenv(
-            "TAILSCALE_API_BASE_URL", "https://api.tailscale.com"
-        ),
+        tailscale_api_base_url=os.getenv("TAILSCALE_API_BASE_URL", "https://api.tailscale.com"),
         tailscale_api_token=os.getenv("TAILSCALE_API_TOKEN", ""),
         tailscale_tailnet=os.getenv("TAILSCALE_TAILNET", ""),
         tailscale_auth_key=os.getenv("TAILSCALE_AUTH_KEY", ""),

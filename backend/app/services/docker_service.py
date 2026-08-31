@@ -180,7 +180,9 @@ class DockerService:
         exec_id = exec_info["Id"]
         output = self.api.exec_start(exec_id, detach=False, tty=False)
         inspected = self.api.exec_inspect(exec_id)
-        decoded_output = output.decode("utf-8", errors="ignore") if isinstance(output, bytes) else str(output)
+        decoded_output = (
+            output.decode("utf-8", errors="ignore") if isinstance(output, bytes) else str(output)
+        )
         return {
             "exitCode": inspected.get("ExitCode", 0) or 0,
             "output": decoded_output,
@@ -423,7 +425,9 @@ class DockerService:
         precpu_usage = precpu_stats.get("cpu_usage") or {}
 
         cpu_delta = cpu_usage.get("total_usage", 0) - precpu_usage.get("total_usage", 0)
-        system_delta = cpu_stats.get("system_cpu_usage", 0) - precpu_stats.get("system_cpu_usage", 0)
+        system_delta = cpu_stats.get("system_cpu_usage", 0) - precpu_stats.get(
+            "system_cpu_usage", 0
+        )
         online_cpus = cpu_stats.get("online_cpus") or 1
         cpu_percent = (cpu_delta / system_delta) * 100 * online_cpus if system_delta > 0 else 0
 
@@ -452,6 +456,7 @@ class DockerService:
             "blockRead": block_read,
             "blockWrite": block_write,
         }
+
 
 _docker_service: DockerService | None = None
 _docker_service_lock = Lock()

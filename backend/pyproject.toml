@@ -20,8 +20,36 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = []
+dev = [
+  "ruff>=0.6.0",
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.24.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "B",      # flake8-bugbear
+    "UP",     # pyupgrade
+    "SIM",    # flake8-simplify
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "B008",   # function call in argument defaults (padrão FastAPI Body/Query/Depends)
+    "RUF012", # mutable class attributes in Pydantic/dataclasses
+    "E501",   # line length (gerenciado pelo ruff format)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

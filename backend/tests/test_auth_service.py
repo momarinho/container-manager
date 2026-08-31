@@ -5,8 +5,8 @@ import unittest
 os.environ["JWT_SECRET"] = "0123456789abcdef0123456789abcdef"
 os.environ["DATABASE_PATH"] = "test_database.db"
 
-from app.services.auth_service import AuthService
 from app.database import db_manager
+from app.services.auth_service import AuthService
 
 
 class AuthServiceTests(unittest.TestCase):
@@ -57,7 +57,7 @@ class AuthServiceTests(unittest.TestCase):
     def test_delete_user(self) -> None:
         # Create user
         self.service.create_user("charlie", "charliepass")
-        
+
         # Verify it exists
         self.assertIsNotNone(self.service.get_user_by_username("charlie"))
 

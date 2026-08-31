@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
-import socket as socket_lib
+import contextlib
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,10 +20,8 @@ class DockerSocketAdapter:
         self.socket = self._resolve_socket(raw_socket)
         settimeout = getattr(self.socket, "settimeout", None)
         if callable(settimeout):
-            try:
+            with contextlib.suppress(OSError):
                 settimeout(1.0)
-            except OSError:
-                pass
 
     @staticmethod
     def _resolve_socket(raw_socket: Any) -> Any:
@@ -96,10 +94,8 @@ class TerminalService:
     async def stop(self) -> None:
         if self._cleanup_task is not None:
             self._cleanup_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
             self._cleanup_task = None
 
         for session_id in list(self.sessions.keys()):
@@ -167,10 +163,8 @@ class TerminalService:
                 if session is not None:
                     with self._lock:
                         self.sessions.pop(session.id, None)
-                    try:
+                    with contextlib.suppress(Exception):
                         session.socket.close()
-                    except Exception:
-                        pass
                 logger.warning(
                     "Failed to start terminal shell for %s using %s: %s",
                     container_id,
@@ -206,15 +200,11 @@ class TerminalService:
             return
 
         session.closing.set()
-        try:
+        with contextlib.suppress(Exception):
             session.socket.send(b"exit\n")
-        except Exception:
-            pass
 
-        try:
+        with contextlib.suppress(Exception):
             session.socket.close()
-        except Exception:
-            pass
 
     async def _cleanup_loop(self) -> None:
         while True:
@@ -234,26 +224,28 @@ class TerminalService:
             while not session.closing.is_set():
                 try:
                     chunk = session.socket.recv(4096)
-                except socket_lib.timeout:
+                except TimeoutError:
                     continue
 
                 if not chunk:
                     break
 
                 session.last_activity = time.monotonic()
-                self._publish(session, {"type": "output", "data": chunk.decode("utf-8", errors="ignore")})
+                self._publish(
+                    session, {"type": "output", "data": chunk.decode("utf-8", errors="ignore")}
+                )
         except Exception as exc:
             logger.exception("Terminal session %s stream error", session.id)
             self._publish(session, {"type": "error", "message": str(exc)})
         finally:
-            self._publish(session, {"type": "output", "data": self._get_close_message(session.exec_id)})
+            self._publish(
+                session, {"type": "output", "data": self._get_close_message(session.exec_id)}
+            )
             self._publish(session, {"type": "closed"})
             with self._lock:
                 self.sessions.pop(session.id, None)
-            try:
+            with contextlib.suppress(Exception):
                 session.socket.close()
-            except Exception:
-                pass
 
     def _publish(self, session: TerminalSession, payload: dict[str, str]) -> None:
         try:
