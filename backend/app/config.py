@@ -3,9 +3,16 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
-load_dotenv()
+# Carrega .env procurando no diretório do backend ou diretórios pais
+_backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_backend_env = os.path.join(_backend_dir, ".env")
+if os.path.isfile(_backend_env):
+    load_dotenv(_backend_env)
+else:
+    load_dotenv(find_dotenv(usecwd=True))
+
 
 
 def _get_int(name: str, default: int) -> int:

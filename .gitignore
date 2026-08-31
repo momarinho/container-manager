@@ -37,3 +37,14 @@ coverage/
 
 # Documentation (local only)
 /docs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+*.db
+*.sqlite3
+
