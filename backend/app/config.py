@@ -81,21 +81,33 @@ def load_config() -> AppConfig:
         token.strip() for token in os.getenv("API_TOKENS", "").split(",") if token.strip()
     )
 
+    node_env = os.getenv("NODE_ENV", "development").lower()
+    cors_origin = os.getenv("CORS_ORIGIN", "*")
+    if node_env == "production" and (not cors_origin or cors_origin.strip() == "*"):
+        raise ValueError(
+            "CORS_ORIGIN cannot be '*' in production mode. "
+            "Please configure explicit allowed origins (e.g. 'https://app.example.com')."
+        )
+
+    docker_socket_path = (
+        os.getenv("DOCKER_HOST") or os.getenv("DOCKER_SOCKET_PATH") or "/var/run/docker.sock"
+    )
+
     return AppConfig(
         app_name=os.getenv("APP_NAME", "containermaster-backend"),
         app_version=os.getenv("APP_VERSION", "0.1.0"),
         app_commit_sha=os.getenv("APP_COMMIT_SHA", "local"),
         host=os.getenv("HOST", "0.0.0.0"),
         port=_get_int("PORT", 3000),
-        node_env=os.getenv("NODE_ENV", "development"),
+        node_env=node_env,
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         log_format=os.getenv("LOG_FORMAT", "text").lower(),
         enable_access_logs=_get_bool("ENABLE_ACCESS_LOGS", True),
         jwt_secret=jwt_secret,
         jwt_expires_in=os.getenv("JWT_EXPIRES_IN", "24h"),
         api_tokens=api_tokens,
-        cors_origin=os.getenv("CORS_ORIGIN", "*"),
-        docker_socket_path=os.getenv("DOCKER_SOCKET_PATH", "/var/run/docker.sock"),
+        cors_origin=cors_origin,
+        docker_socket_path=docker_socket_path,
         ws_ping_interval=_get_int("WS_PING_INTERVAL", 30000),
         ws_ping_timeout=_get_int("WS_PING_TIMEOUT", 5000),
         rate_limit_window_ms=_get_int("RATE_LIMIT_WINDOW_MS", 60000),

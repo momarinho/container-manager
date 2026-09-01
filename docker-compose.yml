@@ -1,30 +1,78 @@
 services:
+  docker-proxy:
+    image: ${DOCKER_PROXY_IMAGE:-tecnativa/docker-socket-proxy:latest}
+    container_name: containermaster-docker-proxy-dev
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORKS=1
+      - VOLUMES=1
+      - POST=1
+      - EXEC=1
+      - INFO=1
+      - EVENTS=1
+      - PING=1
+      - VERSION=1
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - DISTRIBUTION=0
+      - GRPC=0
+      - NODES=0
+      - PLUGINS=0
+      - SECRETS=0
+      - SERVICES=0
+      - SESSION=0
+      - SWARM=0
+      - SYSTEM=0
+      - TASKS=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /run
+    networks:
+      - containermaster-dev-net
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: containermaster-backend-dev
     user: "0:0"
+    depends_on:
+      - docker-proxy
     env_file:
       - ./backend/.env
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - DOCKER_HOST=tcp://docker-proxy:2375
     command: uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
     ports:
       - "${BACKEND_HOST_PORT:-3000}:3000"
     volumes:
       - ./backend/app:/app/app
-      - /var/run/docker.sock:/var/run/docker.sock
     read_only: false
     tmpfs: []
+    networks:
+      - containermaster-dev-net
 
   frontend-web:
     build:
       context: .
       dockerfile: frontend/Dockerfile.web
-    container_name: containermaster-frontend-web
+    container_name: containermaster-frontend-web-dev
     depends_on:
       - backend
     ports:
       - "${FRONTEND_WEB_HOST_PORT:-8081}:8081"
+    networks:
+      - containermaster-dev-net
+
+networks:
+  containermaster-dev-net:
+    driver: bridge
