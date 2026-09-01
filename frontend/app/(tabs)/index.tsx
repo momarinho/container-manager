@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import {
   HardDrive,
   LogOut,
@@ -27,12 +27,11 @@ import {
 } from "lucide-react-native";
 import { Colors } from "../../constants/Colors";
 import { useAuth } from "../../src/contexts/AuthContext";
+import { queryClient } from "../../src/config/queryClient";
 import ActionFeedbackBanner from "../../src/components/ActionFeedbackBanner";
+import { useContainersQuery, useSystemStatsQuery } from "../../src/hooks/queries";
 import { useContainerAction } from "../../src/hooks/useContainerAction";
 import { useWebSocket } from "../../src/hooks/useWebSocket";
-import { containersService } from "../../src/services/containers.service";
-import { systemService } from "../../src/services/system.service";
-import type { Container } from "../../src/types/container.types";
 import type { SystemStats } from "../../src/types/system.types";
 
 type QuickAction = "start" | "stop" | "restart";
@@ -58,73 +57,38 @@ export default function DashboardScreen() {
     runAction,
   } = useContainerAction();
 
-  const [stats, setStats] = useState<SystemStats | null>(null);
-  const [containers, setContainers] = useState<Container[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: containers = [],
+    isLoading: loadingContainers,
+    refetch: refetchContainers,
+    error: containersError,
+  } = useContainersQuery({ all: true });
+
+  const {
+    data: stats = null,
+    refetch: refetchStats,
+    error: statsError,
+  } = useSystemStatsQuery();
+
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const hasLoadedOnFocusRef = useRef(false);
 
-  const loadData = useCallback(async (showSpinner: boolean) => {
-    try {
-      if (showSpinner) {
-        setLoading(true);
-      }
-
-      setLoadError(null);
-
-      let statsFailed = false;
-      try {
-        const statsData = await systemService.getStats();
-        setStats(statsData);
-      } catch (error) {
-        console.error("Error loading dashboard stats:", error);
-        setStats(null);
-        statsFailed = true;
-      }
-
-      let containersFailed = false;
-      try {
-        const containersData = await containersService.list({ all: true });
-        setContainers(containersData);
-      } catch (error) {
-        console.error("Error loading dashboard containers:", error);
-        containersFailed = true;
-      }
-
-      if (statsFailed && containersFailed) {
-        setLoadError("Falha ao carregar os dados do ambiente atual.");
-      } else if (statsFailed) {
-        setLoadError(
-          "Metricas indisponiveis no momento. Exibindo containers carregados.",
-        );
-      } else if (containersFailed) {
-        setLoadError("Falha ao carregar a lista de containers.");
-      }
-    } catch (error) {
-      console.error("Error loading dashboard data:", error);
-      setLoadError("Falha ao carregar os dados do ambiente atual.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      const showSpinner = !hasLoadedOnFocusRef.current;
-      hasLoadedOnFocusRef.current = true;
-      void loadData(showSpinner);
-    }, [loadData]),
-  );
+  const loading = loadingContainers && !containers.length;
+  const loadError =
+    containersError && statsError
+      ? "Falha ao carregar os dados do ambiente atual."
+      : containersError
+        ? "Falha ao carregar a lista de containers."
+        : statsError
+          ? "Metricas indisponiveis no momento. Exibindo containers carregados."
+          : null;
 
   const { isConnected } = useWebSocket<SystemStats>(
     "/stats",
     (data) => {
       if (autoRefresh) {
-        setStats(data);
+        queryClient.setQueryData(["systemStats"], data);
       }
     },
     autoRefresh,
@@ -146,8 +110,12 @@ export default function DashboardScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData(false);
-  }, [loadData]);
+    await Promise.all([
+      refetchContainers(),
+      refetchStats(),
+    ]);
+    setRefreshing(false);
+  }, [refetchContainers, refetchStats]);
 
   const confirmAndLogout = async () => {
     await logout();
@@ -179,7 +147,10 @@ export default function DashboardScreen() {
     await runAction({
       action,
       containerId,
-      onCompleted: () => loadData(false),
+      onCompleted: () => {
+        void queryClient.invalidateQueries({ queryKey: ["containers"] });
+        void queryClient.invalidateQueries({ queryKey: ["systemStats"] });
+      },
     });
   };
 

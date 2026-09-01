@@ -32,10 +32,12 @@ import { Colors } from "../../../constants/Colors";
 import ActionFeedbackBanner, {
   type ActionFeedback,
 } from "../../components/ActionFeedbackBanner";
+import { queryClient } from "../../config/queryClient";
+import { useContainerDetailsQuery } from "../../hooks/queries";
 import { useContainerAction } from "../../hooks/useContainerAction";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { containersService } from "../../services/containers.service";
-import type { ContainerDetails, ContainerStats } from "../../types/container.types";
+import type { ContainerStats } from "../../types/container.types";
 
 const monoFont = Platform.OS === "ios" ? "Menlo" : "monospace";
 const MAX_LOG_LINES = 400;
@@ -340,11 +342,15 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
     runAction,
   } = useContainerAction();
 
-  const [details, setDetails] = useState<ContainerDetails | null>(null);
+  const {
+    data: details = null,
+    isLoading: loadingDetails,
+    refetch: refetchDetails,
+    error: detailsQueryError,
+  } = useContainerDetailsQuery(containerId);
+
   const [stats, setStats] = useState<ContainerStats | null>(null);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [statsUnavailable, setStatsUnavailable] = useState(false);
   const [activeView, setActiveView] = useState<ContainerView>("overview");
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
@@ -353,49 +359,30 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
   const [logsFeedback, setLogsFeedback] = useState<ActionFeedback | null>(null);
   const logSequence = useRef(0);
 
-  const loadData = useCallback(
-    async (showSpinner: boolean) => {
-      try {
-        if (showSpinner) {
-          setLoading(true);
-        }
+  const loading = loadingDetails && !details;
+  const loadError = !containerId
+    ? "Container invalido."
+    : detailsQueryError
+      ? "Nao foi possivel carregar os detalhes do container."
+      : null;
 
-        setLoadError(null);
-        setStats(null);
-        setStatsUnavailable(false);
-
-        const detailsResult = await containersService.get(containerId);
-        setDetails(detailsResult);
-        setLoading(false);
-
-        try {
-          const statsResult = await containersService.getStats(containerId);
-          setStats(statsResult);
-        } catch (statsError) {
-          console.error("Error loading container stats:", statsError);
-          setStatsUnavailable(true);
-        }
-      } catch (error) {
-        console.error("Error loading container details:", error);
-        setDetails(null);
-        setLoadError("Nao foi possivel carregar os detalhes do container.");
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [containerId],
-  );
-
-  useEffect(() => {
+  const loadStats = useCallback(async () => {
     if (!containerId) {
-      setLoadError("Container invalido.");
-      setLoading(false);
       return;
     }
+    try {
+      const statsResult = await containersService.getStats(containerId);
+      setStats(statsResult);
+      setStatsUnavailable(false);
+    } catch (statsError) {
+      console.error("Error loading container stats:", statsError);
+      setStatsUnavailable(true);
+    }
+  }, [containerId]);
 
-    void loadData(true);
-  }, [containerId, loadData]);
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
 
   useEffect(() => {
     logSequence.current = 0;
@@ -474,7 +461,8 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
   const handleRefresh = async () => {
     clearFeedback();
     setRefreshing(true);
-    await loadData(false);
+    await Promise.all([refetchDetails(), loadStats()]);
+    setRefreshing(false);
   };
 
   const logCounts = useMemo(
@@ -601,7 +589,11 @@ export default function ContainerDetailsScreen({ containerId }: Props) {
     await runAction({
       action,
       containerId,
-      onCompleted: () => loadData(false),
+      onCompleted: () => {
+        void queryClient.invalidateQueries({ queryKey: ["container", containerId] });
+        void queryClient.invalidateQueries({ queryKey: ["containers"] });
+        void loadStats();
+      },
     });
   };
 

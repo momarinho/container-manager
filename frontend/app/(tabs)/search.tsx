@@ -1,8 +1,6 @@
 import React, {
-  useCallback,
   useDeferredValue,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -15,14 +13,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import {
   ExternalLink,
   Search as SearchIcon,
   Server,
 } from "lucide-react-native";
 import { Colors } from "../../constants/Colors";
-import { containersService } from "../../src/services/containers.service";
+import { useContainersQuery } from "../../src/hooks/queries";
 import type { Container } from "../../src/types/container.types";
 
 type StatusFilter = "all" | "running" | "exited" | "paused";
@@ -66,42 +64,22 @@ function getPrimaryName(container: Container): string {
 
 export default function SearchScreen() {
   const router = useRouter();
-  const hasLoadedOnFocusRef = useRef(false);
 
-  const [containers, setContainers] = useState<Container[]>([]);
+  const {
+    data: containers = [],
+    isLoading: loadingContainers,
+    refetch,
+    error: queryError,
+  } = useContainersQuery({ all: true });
+
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const loading = loadingContainers && !containers.length;
+  const error = queryError ? "Nao foi possivel carregar os containers." : null;
 
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
-
-  const loadContainers = useCallback(async (showSpinner: boolean) => {
-    try {
-      if (showSpinner) {
-        setLoading(true);
-      }
-
-      setError(null);
-      const data = await containersService.list({ all: true });
-      setContainers(data);
-    } catch (loadError) {
-      console.error("Error loading search data:", loadError);
-      setError("Nao foi possivel carregar os containers.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      const showSpinner = !hasLoadedOnFocusRef.current;
-      hasLoadedOnFocusRef.current = true;
-      void loadContainers(showSpinner);
-    }, [loadContainers]),
-  );
 
   const filteredContainers = useMemo(() => {
     return containers.filter((container) => {
@@ -117,14 +95,12 @@ export default function SearchScreen() {
       }
 
       const primaryName = getPrimaryName(container).toLowerCase();
-      const names = container.names.join(" ").toLowerCase();
       const image = container.image.toLowerCase();
       const status = container.status.toLowerCase();
       const state = container.state.toLowerCase();
 
       return (
         primaryName.includes(deferredQuery) ||
-        names.includes(deferredQuery) ||
         image.includes(deferredQuery) ||
         status.includes(deferredQuery) ||
         state.includes(deferredQuery)
@@ -134,7 +110,8 @@ export default function SearchScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadContainers(false);
+    await refetch();
+    setRefreshing(false);
   };
 
   const openContainer = (containerId: string) => {
@@ -229,7 +206,7 @@ export default function SearchScreen() {
             <Text style={styles.messageText}>{error}</Text>
             <TouchableOpacity
               style={styles.retryButton}
-              onPress={() => void loadContainers(true)}
+              onPress={() => void refetch()}
             >
               <Text style={styles.retryButtonText}>Retry</Text>
             </TouchableOpacity>

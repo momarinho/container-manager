@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,36 +13,20 @@ import {
 import { useRouter } from 'expo-router';
 import { Network, Trash2, Plus, ArrowLeft, RefreshCw, Cpu } from 'lucide-react-native';
 import { Colors } from '../../../constants/Colors';
+import { queryClient } from '../../config/queryClient';
+import { useNetworksQuery } from '../../hooks/queries';
 import { networksService } from '../../services/networks.service';
-import type { DockerNetwork } from '../../types/network.types';
 
 const monoFont = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
 export default function NetworksScreen() {
   const router = useRouter();
-  const [networks, setNetworks] = useState<DockerNetwork[]>([]);
+  const { data: networks = [], isLoading: loading } = useNetworksQuery();
   const [networkName, setNetworkName] = useState('');
   const [driver, setDriver] = useState('bridge');
   const [subnet, setSubnet] = useState('');
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [pruning, setPruning] = useState(false);
-
-  useEffect(() => {
-    void loadNetworks();
-  }, []);
-
-  const loadNetworks = async () => {
-    try {
-      setLoading(true);
-      const data = await networksService.list();
-      setNetworks(data);
-    } catch (error: any) {
-      Alert.alert('Erro', error.message || 'Erro ao carregar redes');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreateNetwork = async () => {
     if (!networkName.trim()) {
@@ -60,7 +44,7 @@ export default function NetworksScreen() {
       Alert.alert('Sucesso', 'Rede criada com sucesso');
       setNetworkName('');
       setSubnet('');
-      await loadNetworks();
+      void queryClient.invalidateQueries({ queryKey: ['networks'] });
     } catch (error: any) {
       Alert.alert('Erro', error.message || 'Erro ao criar rede');
     } finally {
@@ -78,7 +62,7 @@ export default function NetworksScreen() {
           try {
             await networksService.remove(id);
             Alert.alert('Sucesso', `Rede ${name} removida`);
-            await loadNetworks();
+            void queryClient.invalidateQueries({ queryKey: ['networks'] });
           } catch (error: any) {
             Alert.alert('Erro', error.message || 'Erro ao remover rede');
           }
@@ -102,7 +86,7 @@ export default function NetworksScreen() {
               const report = await networksService.prune();
               const count = report.networksDeleted.length;
               Alert.alert('Prune Concluído', `${count} rede(s) excluída(s).`);
-              await loadNetworks();
+              void queryClient.invalidateQueries({ queryKey: ['networks'] });
             } catch (error: any) {
               Alert.alert('Erro', error.message || 'Erro ao limpar redes');
             } finally {

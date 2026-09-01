@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,35 +13,19 @@ import {
 import { useRouter } from 'expo-router';
 import { HardDrive, Trash2, Plus, ArrowLeft, RefreshCw, Layers } from 'lucide-react-native';
 import { Colors } from '../../../constants/Colors';
+import { queryClient } from '../../config/queryClient';
+import { useVolumesQuery } from '../../hooks/queries';
 import { volumesService } from '../../services/volumes.service';
-import type { DockerVolume } from '../../types/volume.types';
 
 const monoFont = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
 export default function VolumesScreen() {
   const router = useRouter();
-  const [volumes, setVolumes] = useState<DockerVolume[]>([]);
+  const { data: volumes = [], isLoading: loading } = useVolumesQuery();
   const [volumeName, setVolumeName] = useState('');
   const [driver, setDriver] = useState('local');
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [pruning, setPruning] = useState(false);
-
-  useEffect(() => {
-    void loadVolumes();
-  }, []);
-
-  const loadVolumes = async () => {
-    try {
-      setLoading(true);
-      const data = await volumesService.list();
-      setVolumes(data);
-    } catch (error: any) {
-      Alert.alert('Erro', error.message || 'Erro ao carregar volumes');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreateVolume = async () => {
     if (!volumeName.trim()) {
@@ -57,7 +41,7 @@ export default function VolumesScreen() {
       });
       Alert.alert('Sucesso', 'Volume criado com sucesso');
       setVolumeName('');
-      await loadVolumes();
+      void queryClient.invalidateQueries({ queryKey: ['volumes'] });
     } catch (error: any) {
       Alert.alert('Erro', error.message || 'Erro ao criar volume');
     } finally {
@@ -75,7 +59,7 @@ export default function VolumesScreen() {
           try {
             await volumesService.remove(name);
             Alert.alert('Sucesso', `Volume ${name} removido`);
-            await loadVolumes();
+            void queryClient.invalidateQueries({ queryKey: ['volumes'] });
           } catch (error: any) {
             Alert.alert('Erro', error.message || 'Erro ao remover volume');
           }
@@ -100,7 +84,7 @@ export default function VolumesScreen() {
               const count = report.volumesDeleted.length;
               const mb = (report.spaceReclaimed / (1024 * 1024)).toFixed(2);
               Alert.alert('Prune Concluído', `${count} volume(s) excluído(s). Espaço liberado: ${mb} MB`);
-              await loadVolumes();
+              void queryClient.invalidateQueries({ queryKey: ['volumes'] });
             } catch (error: any) {
               Alert.alert('Erro', error.message || 'Erro ao limpar volumes');
             } finally {
