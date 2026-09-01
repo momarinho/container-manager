@@ -28,9 +28,11 @@ from app.routers import (
     auth_router,
     containers_router,
     health_router,
+    networks_router,
     system_router,
     tunnel_router,
     users_router,
+    volumes_router,
     websockets_router,
 )
 from app.utils.errors import AppError
@@ -46,6 +48,8 @@ API_TAGS = [
         "description": "Container lifecycle and execution operations.",
     },
     {"name": "System", "description": "Host system metrics and runtime information."},
+    {"name": "Volumes", "description": "Docker volume lifecycle and pruning operations."},
+    {"name": "Networks", "description": "Docker network lifecycle and connection operations."},
     {"name": "Tunnel", "description": "Tunnel provider status and control endpoints."},
     {
         "name": "WebSockets",
@@ -227,6 +231,8 @@ async def unhandled_exception_handler(_request: Request, exc: Exception) -> JSON
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(containers_router)
+app.include_router(volumes_router)
+app.include_router(networks_router)
 app.include_router(system_router)
 app.include_router(tunnel_router)
 app.include_router(users_router)

@@ -457,6 +457,218 @@ class DockerService:
             "blockWrite": block_write,
         }
 
+    # --- Volumes Management ---
+
+    def list_volumes(self) -> list[dict[str, Any]]:
+        raw = self.api.volumes()
+        volumes = raw.get("Volumes") or []
+        containers = self.api.containers(all=True)
+        volume_usage: dict[str, list[dict[str, str]]] = {}
+        for c in containers:
+            c_name = (c.get("Names") or [""])[0].lstrip("/")
+            c_id = c.get("Id", "")[:12]
+            for mount in c.get("Mounts", []):
+                v_name = mount.get("Name")
+                if v_name:
+                    volume_usage.setdefault(v_name, []).append({"id": c_id, "name": c_name})
+
+        result = []
+        for v in volumes:
+            name = v.get("Name", "")
+            result.append(
+                {
+                    "name": name,
+                    "driver": v.get("Driver", "local"),
+                    "mountpoint": v.get("Mountpoint", ""),
+                    "createdAt": v.get("CreatedAt", ""),
+                    "labels": v.get("Labels") or {},
+                    "scope": v.get("Scope", "local"),
+                    "options": v.get("Options") or {},
+                    "usedBy": volume_usage.get(name, []),
+                    "inUse": len(volume_usage.get(name, [])) > 0,
+                }
+            )
+        return result
+
+    def get_volume(self, name: str) -> dict[str, Any]:
+        v = self.api.inspect_volume(name)
+        containers = self.api.containers(all=True)
+        used_by = []
+        for c in containers:
+            c_name = (c.get("Names") or [""])[0].lstrip("/")
+            c_id = c.get("Id", "")[:12]
+            for mount in c.get("Mounts", []):
+                if mount.get("Name") == name:
+                    used_by.append({"id": c_id, "name": c_name})
+
+        return {
+            "name": v.get("Name", name),
+            "driver": v.get("Driver", "local"),
+            "mountpoint": v.get("Mountpoint", ""),
+            "createdAt": v.get("CreatedAt", ""),
+            "labels": v.get("Labels") or {},
+            "scope": v.get("Scope", "local"),
+            "options": v.get("Options") or {},
+            "usedBy": used_by,
+            "inUse": len(used_by) > 0,
+        }
+
+    def create_volume(
+        self,
+        name: str | None = None,
+        driver: str = "local",
+        driver_opts: dict[str, str] | None = None,
+        labels: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        v = self.api.create_volume(
+            name=name,
+            driver=driver,
+            driver_opts=driver_opts or {},
+            labels=labels or {},
+        )
+        return self.get_volume(v.get("Name") or (name or ""))
+
+    def remove_volume(self, name: str, force: bool = False) -> None:
+        self.api.remove_volume(name, force=force)
+
+    def prune_volumes(self, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        result = self.api.prune_volumes(filters=filters)
+        return {
+            "volumesDeleted": result.get("VolumesDeleted") or [],
+            "spaceReclaimed": result.get("SpaceReclaimed", 0),
+        }
+
+    # --- Networks Management ---
+
+    def list_networks(self) -> list[dict[str, Any]]:
+        raw = self.api.networks()
+        result = []
+        for net in raw:
+            containers = net.get("Containers") or {}
+            connected = [
+                {
+                    "id": cid[:12],
+                    "name": info.get("Name", ""),
+                    "ipv4Address": info.get("IPv4Address", ""),
+                }
+                for cid, info in containers.items()
+            ]
+            ipam = net.get("IPAM") or {}
+            configs = ipam.get("Config") or []
+            subnet = configs[0].get("Subnet", "") if configs else ""
+            gateway = configs[0].get("Gateway", "") if configs else ""
+
+            result.append(
+                {
+                    "id": net.get("Id", "")[:12],
+                    "fullId": net.get("Id", ""),
+                    "name": net.get("Name", ""),
+                    "driver": net.get("Driver", ""),
+                    "scope": net.get("Scope", "local"),
+                    "internal": net.get("Internal", False),
+                    "attachable": net.get("Attachable", False),
+                    "subnet": subnet,
+                    "gateway": gateway,
+                    "labels": net.get("Labels") or {},
+                    "containers": connected,
+                    "containerCount": len(connected),
+                    "created": net.get("Created", ""),
+                }
+            )
+        return result
+
+    def get_network(self, network_id: str) -> dict[str, Any]:
+        net = self.api.inspect_network(network_id)
+        containers = net.get("Containers") or {}
+        connected = [
+            {
+                "id": cid[:12],
+                "name": info.get("Name", ""),
+                "ipv4Address": info.get("IPv4Address", ""),
+            }
+            for cid, info in containers.items()
+        ]
+        ipam = net.get("IPAM") or {}
+        configs = ipam.get("Config") or []
+        subnet = configs[0].get("Subnet", "") if configs else ""
+        gateway = configs[0].get("Gateway", "") if configs else ""
+
+        return {
+            "id": net.get("Id", "")[:12],
+            "fullId": net.get("Id", ""),
+            "name": net.get("Name", ""),
+            "driver": net.get("Driver", ""),
+            "scope": net.get("Scope", "local"),
+            "internal": net.get("Internal", False),
+            "attachable": net.get("Attachable", False),
+            "subnet": subnet,
+            "gateway": gateway,
+            "labels": net.get("Labels") or {},
+            "containers": connected,
+            "containerCount": len(connected),
+            "created": net.get("Created", ""),
+        }
+
+    def create_network(
+        self,
+        name: str,
+        driver: str = "bridge",
+        internal: bool = False,
+        attachable: bool = True,
+        labels: dict[str, str] | None = None,
+        subnet: str | None = None,
+        gateway: str | None = None,
+    ) -> dict[str, Any]:
+        ipam_config = None
+        if subnet:
+            cfg = {"Subnet": subnet}
+            if gateway:
+                cfg["Gateway"] = gateway
+            ipam_config = docker.types.IPAMConfig(pool_configs=[docker.types.IPAMPool(**cfg)])
+
+        net = self.api.create_network(
+            name=name,
+            driver=driver,
+            internal=internal,
+            attachable=attachable,
+            labels=labels or {},
+            ipam=ipam_config,
+        )
+        return self.get_network(net.get("Id", ""))
+
+    def remove_network(self, network_id: str) -> None:
+        self.api.remove_network(network_id)
+
+    def connect_network(
+        self,
+        network_id: str,
+        container_id: str,
+        ipv4_address: str | None = None,
+    ) -> None:
+        self.api.connect_container_to_network(
+            container=container_id,
+            net_id=network_id,
+            ipv4_address=ipv4_address,
+        )
+
+    def disconnect_network(
+        self,
+        network_id: str,
+        container_id: str,
+        force: bool = False,
+    ) -> None:
+        self.api.disconnect_container_from_network(
+            container=container_id,
+            net_id=network_id,
+            force=force,
+        )
+
+    def prune_networks(self, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        result = self.api.prune_networks(filters=filters)
+        return {
+            "networksDeleted": result.get("NetworksDeleted") or [],
+        }
+
 
 _docker_service: DockerService | None = None
 _docker_service_lock = Lock()

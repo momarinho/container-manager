@@ -89,3 +89,38 @@ class TunnelStatusResponse(BaseModel):
     ip: str | None = None
     health: list[str] = Field(default_factory=list)
     updatedAt: int
+
+
+class CreateVolumeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str | None = None
+    driver: str = "local"
+    driver_opts: dict[str, str] = Field(default_factory=dict, alias="driverOpts")
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class CreateNetworkRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(min_length=1)
+    driver: str = "bridge"
+    internal: bool = False
+    attachable: bool = True
+    labels: dict[str, str] = Field(default_factory=dict)
+    subnet: str | None = None
+    gateway: str | None = None
+
+
+class ConnectNetworkRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    container_id: str = Field(min_length=1, alias="containerId")
+    ipv4_address: str | None = Field(default=None, alias="ipv4Address")
+
+
+class DisconnectNetworkRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    container_id: str = Field(min_length=1, alias="containerId")
+    force: bool = False

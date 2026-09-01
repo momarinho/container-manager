@@ -14,7 +14,9 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import {
+  HardDrive,
   LogOut,
+  Network,
   Plus,
   Play,
   RotateCw,
@@ -273,8 +275,17 @@ export default function DashboardScreen() {
           >
             <Plus size={20} color={Colors.primary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
-            <LogOut size={20} color={Colors.outline} />
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push("/volumes" as any)}
+          >
+            <HardDrive size={20} color={Colors.outline} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push("/networks" as any)}
+          >
+            <Network size={20} color={Colors.outline} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerButton}
@@ -287,6 +298,9 @@ export default function DashboardScreen() {
             onPress={() => router.push("/(tabs)/servers")}
           >
             <Settings size={20} color={Colors.outline} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
+            <LogOut size={20} color={Colors.outline} />
           </TouchableOpacity>
         </View>
 
