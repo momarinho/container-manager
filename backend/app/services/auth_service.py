@@ -7,17 +7,18 @@ import bcrypt
 
 from app.config import config
 from app.database import db_manager
+from app.db.models.user import User
 from app.models import AuthResponse, AuthUser
+from app.repositories.user_repository import SyncUserRepository
 from app.security import expiration_to_milliseconds, sign_jwt, verify_jwt
 
 
 class AuthService:
     def get_user_by_username(self, username: str) -> dict | None:
-        with db_manager.get_connection() as conn:
-            row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-            if row:
-                return dict(row)
-        return None
+        with db_manager.get_sync_session() as session:
+            repo = SyncUserRepository(session)
+            user = repo.get_by_username(username)
+            return user.to_dict() if user else None
 
     def validate_credentials(
         self,
@@ -70,40 +71,41 @@ class AuthService:
             return None
 
     def list_users(self) -> list[dict]:
-        with db_manager.get_connection() as conn:
-            rows = conn.execute("SELECT id, username, created_at FROM users").fetchall()
-            return [dict(row) for row in rows]
+        with db_manager.get_sync_session() as session:
+            repo = SyncUserRepository(session)
+            users = repo.list_all()
+            return [u.to_dict() for u in users]
 
     def create_user(self, username: str, password_plain: str) -> dict:
         if not username or not password_plain:
             raise ValueError("Username and password are required")
-        if self.get_user_by_username(username):
-            raise ValueError("User already exists")
+        with db_manager.get_sync_session() as session:
+            repo = SyncUserRepository(session)
+            if repo.get_by_username(username):
+                raise ValueError("User already exists")
 
-        user_id = str(uuid.uuid4())
-        password_hash = bcrypt.hashpw(
-            password_plain.encode("utf-8"), bcrypt.gensalt(rounds=10)
-        ).decode("utf-8")
-        created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            user_id = str(uuid.uuid4())
+            password_hash = bcrypt.hashpw(
+                password_plain.encode("utf-8"), bcrypt.gensalt(rounds=10)
+            ).decode("utf-8")
+            created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-        with db_manager.get_connection() as conn:
-            conn.execute(
-                "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
-                (user_id, username, password_hash, created_at),
+            new_user = User(
+                id=user_id,
+                username=username,
+                password_hash=password_hash,
+                created_at=created_at,
             )
-            conn.commit()
-
-        return {"id": user_id, "username": username, "created_at": created_at}
+            repo.create(new_user)
+            return {"id": user_id, "username": username, "created_at": created_at}
 
     def delete_user(self, username: str) -> bool:
         if username == "alice":
             raise ValueError("Cannot delete default admin user 'alice'")
 
-        with db_manager.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM users WHERE username = ?", (username,))
-            conn.commit()
-            return cursor.rowcount > 0
+        with db_manager.get_sync_session() as session:
+            repo = SyncUserRepository(session)
+            return repo.delete_by_username(username)
 
 
 auth_service = AuthService()
