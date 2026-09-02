@@ -11,6 +11,15 @@ export interface LoginCredentials {
 
 export interface AuthResponse {
   token: string;
+  refreshToken?: string;
   expiresAt: number;
   user: AuthUser;
+}
+
+export interface RefreshTokenRequest {
+  refreshToken: string;
+}
+
+export interface LogoutRequest {
+  refreshToken?: string;
 }

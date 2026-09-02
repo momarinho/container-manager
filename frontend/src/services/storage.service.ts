@@ -5,6 +5,7 @@ import type { ServerConfig, AuthResponse } from "../types/auth.types";
 
 const STORAGE_KEYS = {
   TOKEN: "containermaster_token",
+  REFRESH_TOKEN: "containermaster_refresh_token",
   SERVER: "@containermaster_server",
   SERVERS: "@containermaster_servers",
   ACTIVE_SERVER_ID: "@containermaster_active_server_id",
@@ -76,6 +77,45 @@ export const storageService = {
 
     // Fallback para Web
     await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
+  },
+
+  // Salvar Refresh Token com segurança
+  async saveRefreshToken(refreshToken: string): Promise<void> {
+    if (isNative) {
+      await SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, refreshToken, {
+        keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+      });
+      return;
+    }
+
+    await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+  },
+
+  // Recuperar Refresh Token
+  async getRefreshToken(): Promise<string | null> {
+    if (isNative) {
+      return await SecureStore.getItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
+    }
+
+    return await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+  },
+
+  // Remover Refresh Token
+  async removeRefreshToken(): Promise<void> {
+    if (isNative) {
+      await SecureStore.deleteItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
+      return;
+    }
+
+    await AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+  },
+
+  // Salvar par de tokens (Access + Refresh)
+  async saveAuthTokens(token: string, refreshToken?: string): Promise<void> {
+    await this.saveToken(token);
+    if (refreshToken) {
+      await this.saveRefreshToken(refreshToken);
+    }
   },
 
   // Salvar configuração do servidor
@@ -163,6 +203,10 @@ export const storageService = {
 
   // Limpar apenas dados autenticados (logout)
   async clearAll(): Promise<void> {
-    await Promise.all([this.removeToken(), this.removeUser()]);
+    await Promise.all([
+      this.removeToken(),
+      this.removeRefreshToken(),
+      this.removeUser(),
+    ]);
   },
 };

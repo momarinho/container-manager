@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, Request
 
 from app.dependencies import require_http_user
-from app.models import LoginCredentials
+from app.models import LoginCredentials, LogoutRequest, RefreshTokenRequest
 from app.security import get_bearer_token, verify_jwt
 from app.services.auth_service import auth_service
 from app.utils.http import error_response, success_payload
@@ -34,6 +34,33 @@ async def login(credentials: LoginCredentials):
     response = auth_service.build_login_response(credentials.username)
     response.expiresAt = int(time.time() * 1000) + response.expiresAt
     return success_payload(response.model_dump())
+
+
+@router.post("/refresh", summary="Rotate and refresh tokens")
+async def refresh(payload: RefreshTokenRequest):
+    try:
+        new_auth = auth_service.rotate_refresh_token(payload.refreshToken)
+        new_auth.expiresAt = int(time.time() * 1000) + new_auth.expiresAt
+        return success_payload(new_auth.model_dump())
+    except PermissionError as exc:
+        # Reuso detectado - sessão/família revogada por segurança
+        return error_response(401, "AUTH_TOKEN_COMPROMISED", str(exc))
+    except ValueError as exc:
+        return error_response(401, "AUTH_REFRESH_INVALID", str(exc))
+    except Exception:
+        return error_response(500, "AUTH_REFRESH_FAILED", "Failed to refresh token")
+
+
+@router.post("/logout", summary="Logout user and revoke tokens")
+async def logout(
+    request: Request,
+    payload: LogoutRequest | None = Body(default=None),
+):
+    token = get_bearer_token(request.headers.get("Authorization"))
+    refresh_token = payload.refreshToken if payload else None
+
+    auth_service.revoke_session(access_token=token, raw_refresh_token=refresh_token)
+    return success_payload({"message": "Successfully logged out", "revoked": True})
 
 
 @router.get("/verify", summary="Verify bearer token")

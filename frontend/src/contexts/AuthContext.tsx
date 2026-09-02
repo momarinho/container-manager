@@ -152,8 +152,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           return;
         } else {
-          // Token inválido, limpar tudo
-          await storageService.clearAll();
+          // Tentar renovar silenciosamente com refresh token antes de descartar a sessão
+          const storedRefreshToken = await storageService.getRefreshToken();
+          if (storedRefreshToken) {
+            try {
+              const newAuth = await authService.refresh(
+                storedRefreshToken,
+                activeServer.url,
+              );
+              await storageService.saveAuthTokens(
+                newAuth.token,
+                newAuth.refreshToken,
+              );
+              dispatch({
+                type: "LOGIN_SUCCESS",
+                payload: {
+                  token: newAuth.token,
+                  user: newAuth.user,
+                  server: activeServer,
+                  servers,
+                },
+              });
+              return;
+            } catch {
+              await storageService.clearAll();
+            }
+          } else {
+            // Token inválido, limpar tudo
+            await storageService.clearAll();
+          }
         }
       }
 
@@ -197,7 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Salvar tudo localmente
       await Promise.all([
-        storageService.saveToken(response.token),
+        storageService.saveAuthTokens(response.token, response.refreshToken),
         storageService.saveUser(response.user),
         storageService.saveServers(nextServers),
         storageService.saveActiveServerId(serverConfig.id),
@@ -220,7 +247,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await authService.logout();
+      const serverUrl = state.server?.url;
+      const token = state.token ?? undefined;
+      const refreshToken =
+        (await storageService.getRefreshToken()) ?? undefined;
+      await authService.logout(serverUrl, token, refreshToken);
     } catch (error) {
       console.error("Erro ao finalizar sessão no serviço de auth:", error);
     } finally {

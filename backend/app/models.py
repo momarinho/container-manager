@@ -17,9 +17,24 @@ class AuthUser(BaseModel):
 
 
 class AuthResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     token: str
+    refreshToken: str | None = None
     expiresAt: int
     user: AuthUser
+
+
+class RefreshTokenRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    refreshToken: str = Field(min_length=1)
+
+
+class LogoutRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    refreshToken: str | None = None
 
 
 class ExecRequest(BaseModel):

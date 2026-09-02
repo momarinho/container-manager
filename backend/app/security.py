@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -16,7 +19,7 @@ _UNIT_SECONDS = {
 }
 
 
-def _parse_expiration_seconds(expiration: str) -> int:
+def parse_expiration_seconds(expiration: str) -> int:
     if not expiration:
         return 3600
 
@@ -33,24 +36,55 @@ def _parse_expiration_seconds(expiration: str) -> int:
 
 
 def expiration_to_milliseconds(expiration: str) -> int:
-    return _parse_expiration_seconds(expiration) * 1000
+    return parse_expiration_seconds(expiration) * 1000
 
 
-def sign_jwt(payload: dict[str, Any]) -> str:
-    expires_at = datetime.now(UTC) + timedelta(
-        seconds=_parse_expiration_seconds(config.jwt_expires_in)
-    )
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_refresh_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def sign_jwt(
+    payload: dict[str, Any],
+    expires_in: str | None = None,
+    token_type: str = "access",
+) -> str:
+    expires_seconds = parse_expiration_seconds(expires_in or config.jwt_expires_in)
+    expires_at = datetime.now(UTC) + timedelta(seconds=expires_seconds)
     token_payload = {
+        "jti": str(uuid.uuid4()),
+        "type": token_type,
         **payload,
         "exp": expires_at,
     }
     return jwt.encode(token_payload, config.jwt_secret, algorithm="HS256")
 
 
-def verify_jwt(token: str) -> dict[str, Any]:
+def is_token_revoked(jti: str) -> bool:
+    try:
+        from app.database import db_manager
+        from app.repositories.token_repository import TokenRepository
+
+        with db_manager.get_sync_session() as session:
+            repo = TokenRepository(session)
+            return repo.is_jti_blocked(jti)
+    except Exception:
+        return False
+
+
+def verify_jwt(token: str, check_revocation: bool = True) -> dict[str, Any]:
     try:
         decoded = jwt.decode(token, config.jwt_secret, algorithms=["HS256"])
-        return decoded if isinstance(decoded, dict) else {}
+        if not isinstance(decoded, dict):
+            raise ValueError("Invalid token payload")
+
+        if check_revocation and "jti" in decoded and is_token_revoked(decoded["jti"]):
+            raise ValueError("Token has been revoked")
+
+        return decoded
     except jwt.PyJWTError as exc:
         raise ValueError("Invalid token") from exc
 

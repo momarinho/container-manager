@@ -45,6 +45,7 @@ class AppConfig:
     enable_access_logs: bool
     jwt_secret: str
     jwt_expires_in: str
+    jwt_refresh_expires_in: str
     api_tokens: tuple[str, ...]
     cors_origin: str
     docker_socket_path: str
@@ -104,7 +105,8 @@ def load_config() -> AppConfig:
         log_format=os.getenv("LOG_FORMAT", "text").lower(),
         enable_access_logs=_get_bool("ENABLE_ACCESS_LOGS", True),
         jwt_secret=jwt_secret,
-        jwt_expires_in=os.getenv("JWT_EXPIRES_IN", "24h"),
+        jwt_expires_in=os.getenv("JWT_EXPIRES_IN", "15m"),
+        jwt_refresh_expires_in=os.getenv("JWT_REFRESH_EXPIRES_IN", "7d"),
         api_tokens=api_tokens,
         cors_origin=cors_origin,
         docker_socket_path=docker_socket_path,

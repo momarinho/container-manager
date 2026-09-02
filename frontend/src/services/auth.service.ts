@@ -1,5 +1,5 @@
 import type { ApiSuccess } from "../../../shared/types/api";
-import {
+import type {
   LoginCredentials,
   AuthResponse,
 } from "../types/auth.types";
@@ -72,6 +72,31 @@ class AuthService {
   }
 
   /**
+   * Rotacionar tokens silenciosamente via Refresh Token
+   */
+  async refresh(
+    refreshToken: string,
+    serverUrl?: string,
+  ): Promise<AuthResponse> {
+    let baseUrl: string;
+    if (serverUrl) {
+      baseUrl = normalizeServerUrl(serverUrl);
+    } else {
+      const server = await storageService.getServer();
+      baseUrl = server ? normalizeServerUrl(server.url) : "";
+    }
+
+    const response = await requestJson<ApiSuccess<AuthResponse>>(
+      `${baseUrl}/api/auth/refresh`,
+      {
+        method: "POST",
+        body: JSON.stringify({ refreshToken }),
+      },
+    );
+    return response.data;
+  }
+
+  /**
    * Validar token atual
    */
   async validateToken(serverUrl: string, token?: string): Promise<boolean> {
@@ -112,11 +137,39 @@ class AuthService {
   }
 
   /**
-   * Fazer logout
+   * Fazer logout no backend (revogação da sessão e do refresh token)
    */
-  async logout(): Promise<void> {
-    // Aqui você poderia chamar um endpoint de logout no backend se necessário
-    // Por enquanto, apenas limpa os dados locais
+  async logout(
+    serverUrl?: string,
+    token?: string,
+    refreshToken?: string,
+  ): Promise<void> {
+    try {
+      let baseUrl: string;
+      if (serverUrl) {
+        baseUrl = normalizeServerUrl(serverUrl);
+      } else {
+        const server = await storageService.getServer();
+        baseUrl = server ? normalizeServerUrl(server.url) : "";
+      }
+
+      const authToken = token || (await storageService.getToken());
+      const refresh = refreshToken || (await storageService.getRefreshToken());
+
+      if (baseUrl && (authToken || refresh)) {
+        await requestJson<ApiSuccess<{ revoked: boolean }>>(
+          `${baseUrl}/api/auth/logout`,
+          {
+            method: "POST",
+            headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+            body: JSON.stringify({ refreshToken: refresh || undefined }),
+          },
+        );
+      }
+    } catch (error) {
+      // Falhas de rede no logout não devem travar o encerramento da sessão local
+      console.warn("Logout request failed, clearing local session:", error);
+    }
   }
 }
 
