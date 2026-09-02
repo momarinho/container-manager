@@ -28,7 +28,9 @@ from app.routers import (
     auth_router,
     containers_router,
     health_router,
+    images_router,
     networks_router,
+    stacks_router,
     system_router,
     tunnel_router,
     users_router,
@@ -50,6 +52,8 @@ API_TAGS = [
     {"name": "System", "description": "Host system metrics and runtime information."},
     {"name": "Volumes", "description": "Docker volume lifecycle and pruning operations."},
     {"name": "Networks", "description": "Docker network lifecycle and connection operations."},
+    {"name": "Stacks", "description": "Docker Compose stacks lifecycle and YAML management."},
+    {"name": "Images", "description": "Docker image management and public hub search."},
     {"name": "Tunnel", "description": "Tunnel provider status and control endpoints."},
     {
         "name": "WebSockets",
@@ -233,6 +237,8 @@ app.include_router(auth_router)
 app.include_router(containers_router)
 app.include_router(volumes_router)
 app.include_router(networks_router)
+app.include_router(stacks_router)
+app.include_router(images_router)
 app.include_router(system_router)
 app.include_router(tunnel_router)
 app.include_router(users_router)

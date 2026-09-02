@@ -139,3 +139,17 @@ class DisconnectNetworkRequest(BaseModel):
 
     container_id: str = Field(min_length=1, alias="containerId")
     force: bool = False
+
+
+class DeployStackRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(min_length=1)
+    compose_yaml: str = Field(min_length=1, alias="composeYaml")
+    env_vars: dict[str, str] = Field(default_factory=dict, alias="envVars")
+
+
+class PullImageRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    image: str = Field(min_length=1)

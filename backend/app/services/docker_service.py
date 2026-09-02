@@ -669,6 +669,54 @@ class DockerService:
             "networksDeleted": result.get("NetworksDeleted") or [],
         }
 
+    def list_images(self) -> list[dict[str, Any]]:
+        images = self.client.images.list()
+        results = []
+        for img in images:
+            tags = img.tags or []
+            size = img.attrs.get("Size", 0)
+            created = img.attrs.get("Created", "")
+            results.append(
+                {
+                    "id": img.short_id,
+                    "fullId": img.id,
+                    "tags": tags,
+                    "primaryTag": tags[0] if tags else "<none>:<none>",
+                    "size": size,
+                    "created": created,
+                }
+            )
+        return results
+
+    def search_hub_images(self, term: str) -> list[dict[str, Any]]:
+        clean_term = term.strip()
+        if not clean_term:
+            return []
+        try:
+            results = self.client.images.search(term=clean_term)
+            formatted = []
+            for item in results:
+                formatted.append(
+                    {
+                        "name": item.get("name"),
+                        "description": item.get("description", ""),
+                        "isOfficial": item.get("is_official", False),
+                        "isAutomated": item.get("is_automated", False),
+                        "starCount": item.get("star_count", 0),
+                    }
+                )
+            return formatted
+        except Exception as exc:
+            logger.warning("Failed to search docker hub images: %s", exc)
+            return []
+
+    def pull_image(self, image: str) -> dict[str, Any]:
+        return self._ensure_image(image, pull_image=True)
+
+    def remove_image(self, image_id: str, force: bool = False) -> dict[str, Any]:
+        self.client.images.remove(image=image_id, force=force)
+        return {"id": image_id, "deleted": True}
+
 
 _docker_service: DockerService | None = None
 _docker_service_lock = Lock()

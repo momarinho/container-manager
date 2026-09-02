@@ -15,6 +15,8 @@ import {
 import { useRouter } from "expo-router";
 import {
   HardDrive,
+  Layers,
+  Disc,
   LogOut,
   Network,
   Plus,
@@ -245,6 +247,18 @@ export default function DashboardScreen() {
             onPress={() => router.push("/container/create" as any)}
           >
             <Plus size={20} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push("/stacks" as any)}
+          >
+            <Layers size={20} color={Colors.outline} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push("/images" as any)}
+          >
+            <Disc size={20} color={Colors.outline} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerButton}
