@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 from app import main
 from app.dependencies import require_http_user
 from app.models import CreateContainerRequest, ExecRequest, ValidateImageRequest
+from app.routers.metrics import AUDIT_EVENTS_TOTAL
+from app.services.audit_service import AuditService
 from app.utils.http import error_response, success_payload
 from app.utils.logger import logger
 
@@ -68,6 +70,16 @@ async def create_container(
             docker_service.create_container,
             payload.model_dump(by_alias=True),
         )
+        await AuditService.log_action(
+            user_id=_user.get("id", "unknown"),
+            username=_user.get("username", "unknown"),
+            action="CONTAINER_CREATE",
+            resource_type="container",
+            resource_id=str(created.get("id", payload.name or "unknown")),
+            details=f"image={payload.image} name={payload.name}",
+            status="SUCCESS",
+        )
+        AUDIT_EVENTS_TOTAL.labels(action="CONTAINER_CREATE", status="SUCCESS").inc()
         return success_payload(created)
     except ValueError as exc:
         return error_response(400, "CONTAINER_CREATE_INVALID", str(exc))
@@ -106,14 +118,40 @@ async def _container_action(
     code: str,
     message: str,
     error_message: str,
+    user: dict[str, str] | None = None,
+    action_name: str | None = None,
 ) -> JSONResponse | dict[str, Any]:
     try:
         docker_service = main.get_docker_service()
         action = getattr(docker_service, method_name)
         await main.asyncio.to_thread(action, container_id)
+        if user:
+            act = action_name or f"CONTAINER_{method_name.replace('_container', '').upper()}"
+            await AuditService.log_action(
+                user_id=user.get("id", "unknown"),
+                username=user.get("username", "unknown"),
+                action=act,
+                resource_type="container",
+                resource_id=container_id,
+                details=message,
+                status="SUCCESS",
+            )
+            AUDIT_EVENTS_TOTAL.labels(action=act, status="SUCCESS").inc()
         return success_payload({"id": container_id, "message": message})
     except Exception:
         logger.exception("Failed container action %s on %s", method_name, container_id)
+        if user:
+            act = action_name or f"CONTAINER_{method_name.replace('_container', '').upper()}"
+            await AuditService.log_action(
+                user_id=user.get("id", "unknown"),
+                username=user.get("username", "unknown"),
+                action=act,
+                resource_type="container",
+                resource_id=container_id,
+                details=error_message,
+                status="FAILED",
+            )
+            AUDIT_EVENTS_TOTAL.labels(action=act, status="FAILED").inc()
         return error_response(500, code, error_message)
 
 
@@ -128,6 +166,8 @@ async def start_container(
         "CONTAINER_START_FAILED",
         "Container started",
         "Failed to start container",
+        user=_user,
+        action_name="CONTAINER_START",
     )
 
 
@@ -142,6 +182,8 @@ async def stop_container(
         "CONTAINER_STOP_FAILED",
         "Container stopped",
         "Failed to stop container",
+        user=_user,
+        action_name="CONTAINER_STOP",
     )
 
 
@@ -156,6 +198,8 @@ async def restart_container(
         "CONTAINER_RESTART_FAILED",
         "Container restarted",
         "Failed to restart container",
+        user=_user,
+        action_name="CONTAINER_RESTART",
     )
 
 
@@ -170,6 +214,8 @@ async def pause_container(
         "CONTAINER_PAUSE_FAILED",
         "Container paused",
         "Failed to pause container",
+        user=_user,
+        action_name="CONTAINER_PAUSE",
     )
 
 
@@ -184,6 +230,8 @@ async def unpause_container(
         "CONTAINER_UNPAUSE_FAILED",
         "Container unpaused",
         "Failed to unpause container",
+        user=_user,
+        action_name="CONTAINER_UNPAUSE",
     )
 
 
@@ -196,6 +244,16 @@ async def remove_container(
     try:
         docker_service = main.get_docker_service()
         await main.asyncio.to_thread(docker_service.remove_container, container_id, force)
+        await AuditService.log_action(
+            user_id=_user.get("id", "unknown"),
+            username=_user.get("username", "unknown"),
+            action="CONTAINER_DELETE",
+            resource_type="container",
+            resource_id=container_id,
+            details=f"force={force}",
+            status="SUCCESS",
+        )
+        AUDIT_EVENTS_TOTAL.labels(action="CONTAINER_DELETE", status="SUCCESS").inc()
         return success_payload({"id": container_id, "message": "Container removed"})
     except Exception:
         logger.exception("Failed to remove container %s", container_id)
@@ -246,6 +304,17 @@ async def exec_in_container(
             payload.cmd,
             payload.env,
         )
+        cmd_str = " ".join(payload.cmd)
+        await AuditService.log_action(
+            user_id=_user.get("id", "unknown"),
+            username=_user.get("username", "unknown"),
+            action="CONTAINER_EXEC",
+            resource_type="container",
+            resource_id=container_id,
+            details=f"cmd={cmd_str}",
+            status="SUCCESS",
+        )
+        AUDIT_EVENTS_TOTAL.labels(action="CONTAINER_EXEC", status="SUCCESS").inc()
         return success_payload(result)
     except Exception:
         logger.exception("Failed to exec in container %s", container_id)

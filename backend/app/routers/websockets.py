@@ -196,6 +196,22 @@ async def websocket_terminal(websocket: WebSocket, container_id: str) -> None:
                     user["username"],
                     shell,
                 )
+                from app.routers.metrics import AUDIT_EVENTS_TOTAL
+                from app.services.audit_service import AuditService
+
+                client_host = websocket.client.host if websocket.client else "unknown"
+                await AuditService.log_action(
+                    user_id=user.get("id", "unknown"),
+                    username=user.get("username", "unknown"),
+                    action="TERMINAL_SESSION_START",
+                    resource_type="container",
+                    resource_id=container_id,
+                    client_ip=client_host,
+                    details=f"session={active_session_id} shell={shell}",
+                    status="SUCCESS",
+                )
+                AUDIT_EVENTS_TOTAL.labels(action="TERMINAL_SESSION_START", status="SUCCESS").inc()
+
                 await websocket.send_json({"type": "started", "sessionId": active_session_id})
 
             elif action == "input" and active_session_id:

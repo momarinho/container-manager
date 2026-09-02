@@ -25,10 +25,12 @@ from app.dependencies import (
     tunnel_service,
 )
 from app.routers import (
+    audit_router,
     auth_router,
     containers_router,
     health_router,
     images_router,
+    metrics_router,
     networks_router,
     stacks_router,
     system_router,
@@ -37,6 +39,7 @@ from app.routers import (
     volumes_router,
     websockets_router,
 )
+from app.routers.metrics import HTTP_REQUEST_DURATION_SECONDS, HTTP_REQUESTS_TOTAL
 from app.utils.errors import AppError
 from app.utils.http import error_response
 from app.utils.logger import logger
@@ -58,6 +61,14 @@ API_TAGS = [
     {
         "name": "WebSockets",
         "description": "Real-time channels for stats, logs, tunnel and terminal.",
+    },
+    {
+        "name": "Metrics & Observability",
+        "description": "Prometheus metrics export and system telemetry.",
+    },
+    {
+        "name": "Audit Trail",
+        "description": "Immutable operational audit logging and compliance.",
     },
 ]
 
@@ -177,6 +188,18 @@ async def log_and_rate_limit_requests(request: Request, call_next: Any) -> Respo
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
 
+    duration_s = time.monotonic() - started_at
+    if not request.url.path.startswith("/ws/"):
+        HTTP_REQUESTS_TOTAL.labels(
+            method=request.method,
+            endpoint=request.url.path,
+            status=str(response.status_code),
+        ).inc()
+        HTTP_REQUEST_DURATION_SECONDS.labels(
+            method=request.method,
+            endpoint=request.url.path,
+        ).observe(duration_s)
+
     if config.enable_access_logs:
         logger.info(
             "%s %s -> %s",
@@ -243,6 +266,8 @@ app.include_router(system_router)
 app.include_router(tunnel_router)
 app.include_router(users_router)
 app.include_router(websockets_router)
+app.include_router(metrics_router)
+app.include_router(audit_router)
 
 # Exportações para compatibilidade retroativa com suítes de teste e módulos
 __all__ = [

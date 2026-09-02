@@ -5,3 +5,4 @@ export * from './useNetworksQuery';
 export * from './useSystemStatsQuery';
 export * from './useStacksQuery';
 export * from './useImagesQuery';
+export * from './useAuditLogsQuery';

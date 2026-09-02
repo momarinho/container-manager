@@ -4,6 +4,7 @@ from app.routers.auth import router as auth_router
 from app.routers.containers import router as containers_router
 from app.routers.health import router as health_router
 from app.routers.images import router as images_router
+from app.routers.metrics import audit_router, metrics_router
 from app.routers.networks import router as networks_router
 from app.routers.stacks import router as stacks_router
 from app.routers.system import router as system_router
@@ -13,10 +14,12 @@ from app.routers.volumes import router as volumes_router
 from app.routers.websockets import router as websockets_router
 
 __all__ = [
+    "audit_router",
     "auth_router",
     "containers_router",
     "health_router",
     "images_router",
+    "metrics_router",
     "networks_router",
     "stacks_router",
     "system_router",

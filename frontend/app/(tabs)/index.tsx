@@ -24,6 +24,7 @@ import {
   RotateCw,
   Search as SearchIcon,
   Settings,
+  Shield,
   Square,
   Users,
 } from "lucide-react-native";
@@ -277,6 +278,12 @@ export default function DashboardScreen() {
             onPress={() => router.push("/users" as any)}
           >
             <Users size={20} color={Colors.outline} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => router.push("/audit" as any)}
+          >
+            <Shield size={20} color={Colors.outline} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerButton}
