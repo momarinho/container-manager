@@ -188,6 +188,7 @@ async def websocket_terminal(websocket: WebSocket, container_id: str) -> None:
                     await websocket.send_json({"type": "error", "message": str(exc)})
                     continue
 
+                await websocket.send_json({"type": "started", "sessionId": active_session_id})
                 forward_task = asyncio.create_task(forward_events(active_session_id))
                 logger.info(
                     "Terminal session started: session=%s container=%s user=%s shell=%s",
@@ -211,8 +212,6 @@ async def websocket_terminal(websocket: WebSocket, container_id: str) -> None:
                     status="SUCCESS",
                 )
                 AUDIT_EVENTS_TOTAL.labels(action="TERMINAL_SESSION_START", status="SUCCESS").inc()
-
-                await websocket.send_json({"type": "started", "sessionId": active_session_id})
 
             elif action == "input" and active_session_id:
                 try:
