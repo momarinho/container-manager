@@ -412,40 +412,79 @@ export default function TerminalScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.inputArea}
       >
-        <TouchableOpacity
-          style={styles.commandsBtn}
-          onPress={() => {
-            console.log("Opening commands modal");
-            setShowCommandsModal(true);
-          }}
-          activeOpacity={0.7}
-        >
-          <Command color={Colors.secondary} size={20} />
-        </TouchableOpacity>
-
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={styles.input}
-            placeholder={
-              isSessionActive ? "Digite um comando..." : "Aguardando conexão..."
-            }
-            placeholderTextColor="rgba(65, 71, 82, 0.4)"
-            value={input}
-            onChangeText={setInput}
-            onSubmitEditing={handleSend}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={isSessionActive}
-          />
+        <View style={styles.controlBar}>
+          <TouchableOpacity
+            style={styles.controlBtn}
+            onPress={() => isSessionActive && sendInput("\x03")}
+            disabled={!isSessionActive}
+          >
+            <Text style={styles.controlBtnText}>Ctrl+C</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.controlBtn}
+            onPress={() => isSessionActive && sendInput("\x04")}
+            disabled={!isSessionActive}
+          >
+            <Text style={styles.controlBtnText}>Ctrl+D</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.controlBtn}
+            onPress={() => isSessionActive && sendInput("\t")}
+            disabled={!isSessionActive}
+          >
+            <Text style={styles.controlBtnText}>Tab</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.controlBtn}
+            onPress={() => isSessionActive && sendInput("\x1b")}
+            disabled={!isSessionActive}
+          >
+            <Text style={styles.controlBtnText}>Esc</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.controlBtn}
+            onPress={() => setOutput("")}
+          >
+            <Text style={styles.controlBtnText}>Clear</Text>
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[styles.sendBtn, !isSessionActive && styles.sendBtnDisabled]}
-          onPress={handleSend}
-          disabled={!isSessionActive}
-        >
-          <Send color={Colors.background} size={20} />
-        </TouchableOpacity>
+        <View style={styles.inputRow}>
+          <TouchableOpacity
+            style={styles.commandsBtn}
+            onPress={() => {
+              console.log("Opening commands modal");
+              setShowCommandsModal(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <Command color={Colors.secondary} size={20} />
+          </TouchableOpacity>
+
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              placeholder={
+                isSessionActive ? "Digite um comando..." : "Aguardando conexão..."
+              }
+              placeholderTextColor="rgba(65, 71, 82, 0.4)"
+              value={input}
+              onChangeText={setInput}
+              onSubmitEditing={handleSend}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={isSessionActive}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.sendBtn, !isSessionActive && styles.sendBtnDisabled]}
+            onPress={handleSend}
+            disabled={!isSessionActive}
+          >
+            <Send color={Colors.background} size={20} />
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Modal de Comandos */}
@@ -594,10 +633,32 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   inputArea: {
+    paddingBottom: 24,
+    gap: 8,
+  },
+  controlBar: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  controlBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.surfaceHigh,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  controlBtnText: {
+    color: Colors.primary,
+    fontFamily: monoFont,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  inputRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingBottom: 24,
   },
   commandsBtn: {
     padding: 12,
