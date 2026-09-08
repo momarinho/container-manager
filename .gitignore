@@ -37,6 +37,7 @@ coverage/
 
 # Documentation (local only)
 /docs/
+!/docs/golang-roadmap.md
 
 # Python
 __pycache__/
@@ -47,4 +48,3 @@ __pycache__/
 venv/
 *.db
 *.sqlite3
-
