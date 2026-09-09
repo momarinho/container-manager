@@ -49,3 +49,4 @@ venv/
 *.db
 *.sqlite3
 /cli/cmctl
+/cli/cmctl

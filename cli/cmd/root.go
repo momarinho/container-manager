@@ -10,7 +10,7 @@ import (
 var ApiURL string
 
 var rootCmd = &cobra.Command{
-	Use: "cmctl",
+	Use:   "cmctl",
 	Short: "ContainerMaster CLI - Manage containers from the terminal",
 	Long:  "A lightweight CLI in Go to inspect, start, and monitor containers.",
 	Run: func(cmd *cobra.Command, args []string) {

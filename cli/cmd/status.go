@@ -1,22 +1,22 @@
 package cmd
 
 import (
-        "encoding/json"
-        "fmt"
-        "net/http"
-        "time"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
 
-        "github.com/spf13/cobra"
+	"github.com/spf13/cobra"
 )
 
 type HealthResponse struct {
 	Success bool `json:"success"`
-	Data 	struct {
-		Status      string  `json:"status"`                                                                         
-		Service     string  `json:"service"`                                                                        
-		Environment string  `json:"environment"`                                                                    
-		Version     string  `json:"version"`                                                                        
-		Uptime      float64 `json:"uptime"`    
+	Data    struct {
+		Status      string  `json:"status"`
+		Service     string  `json:"service"`
+		Environment string  `json:"environment"`
+		Version     string  `json:"version"`
+		Uptime      float64 `json:"uptime"`
 	} `json:"data"`
 }
 
