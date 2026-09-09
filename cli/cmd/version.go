@@ -10,14 +10,14 @@ const appVersion = "0.1.0"
 
 var shortFlag bool
 
-// defines command 'version'
+// versionCmd defines the 'version' command
 var versionCmd = &cobra.Command{
         Use:   "version",
         Short: "Show the current version of cmctl",
-        Long:  `Shows detailed info about version and build of the ContainerMaster CLI`,
+        Long:  "Shows detailed information about the version and build of ContainerMaster CLI.",
         Run: func(cmd *cobra.Command, args []string) {
             if shortFlag {
-                // Se o usuário passou --short ou -s, imprime apenas o número
+                // If the user passed --short or -s, print only the version number
                 fmt.Println(appVersion)
             } else {
                 fmt.Printf("cmctl version %s\n", appVersion)
@@ -28,5 +28,5 @@ var versionCmd = &cobra.Command{
 func init() {
         rootCmd.AddCommand(versionCmd)
         
-        versionCmd.Flags().BoolVarP(&shortFlag, "short", "s", false, "Exibe apenas o número da versão")
+        versionCmd.Flags().BoolVarP(&shortFlag, "short", "s", false, "Display only the version number")
 }
