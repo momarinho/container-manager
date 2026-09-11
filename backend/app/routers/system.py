@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app import main
 from app.dependencies import require_http_user
+from app.models import PruneRequest
 from app.utils.http import error_response, success_payload
 from app.utils.logger import logger
 
@@ -36,3 +37,24 @@ async def get_system_info(_user: dict[str, str] = Depends(require_http_user)):
     except Exception:
         logger.exception("Failed to get system info")
         return error_response(500, "SYSTEM_INFO_FAILED", "Failed to get system info")
+
+
+@router.post("/prune", summary="Prune unused Docker resources")
+async def prune_system(
+    payload: PruneRequest = PruneRequest(),
+    _user: dict[str, str] = Depends(require_http_user),
+):
+    try:
+        docker_service = main.get_docker_service()
+        report = await main.asyncio.to_thread(
+            docker_service.prune_system,
+            containers=payload.containers,
+            images=payload.images,
+            volumes=payload.volumes,
+            networks=payload.networks,
+        )
+        return success_payload(report)
+    except Exception:
+        logger.exception("Failed to prune system resources")
+        return error_response(500, "SYSTEM_PRUNE_FAILED", "Failed to prune system resources")
+

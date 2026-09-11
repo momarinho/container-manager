@@ -153,3 +153,12 @@ class PullImageRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     image: str = Field(min_length=1)
+
+
+class PruneRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    containers: bool = True
+    images: bool = True
+    volumes: bool = False
+    networks: bool = False

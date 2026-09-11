@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from threading import Lock
-from typing import Any
+from typing import Any, cast
 
 import docker
+from docker.errors import APIError, ImageNotFound
+from docker.types import IPAMConfig, IPAMPool
 
 from app.config import config
 from app.utils.logger import logger
@@ -44,9 +46,9 @@ class DockerService:
                 "source": "local",
                 "requiresPull": False,
             }
-        except docker.errors.ImageNotFound:
+        except ImageNotFound:
             pass
-        except docker.errors.APIError as exc:
+        except APIError as exc:
             if getattr(exc, "status_code", None) != 404:
                 raise
 
@@ -58,7 +60,7 @@ class DockerService:
                 "source": "registry",
                 "requiresPull": True,
             }
-        except docker.errors.APIError as exc:
+        except APIError as exc:
             if getattr(exc, "status_code", None) == 404:
                 return {
                     "image": normalized_image,
@@ -89,11 +91,6 @@ class DockerService:
         image_result = self._ensure_image(image, pull_image)
         port_bindings = self._build_port_bindings(ports_payload)
         volume_bindings = self._build_volume_bindings(volumes_payload)
-        restart_policy = {
-            "Name": restart_policy_name,
-            "MaximumRetryCount": restart_max_retries,
-        }
-
         container = self.client.containers.create(
             image=image_result["image"],
             name=name,
@@ -104,7 +101,13 @@ class DockerService:
             ports=port_bindings or None,
             volumes=volume_bindings or None,
             working_dir=working_dir,
-            restart_policy=restart_policy,
+            restart_policy=cast(
+                Any,
+                {
+                    "Name": restart_policy_name,
+                    "MaximumRetryCount": restart_max_retries,
+                },
+            ),
             labels=labels,
         )
 
@@ -114,7 +117,7 @@ class DockerService:
             started = True
 
         container.reload()
-        details = self.api.inspect_container(container.id)
+        details = self.api.inspect_container(str(container.id))
 
         return {
             "container": self._transform_container_details(details),
@@ -142,6 +145,13 @@ class DockerService:
     def remove_container(self, container_id: str, force: bool = False) -> None:
         self.api.remove_container(container_id, force=force, v=True)
 
+    def prune_containers(self, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        result = self.api.prune_containers(filters=filters)
+        return {
+            "containersDeleted": result.get("ContainersDeleted") or [],
+            "spaceReclaimed": result.get("SpaceReclaimed", 0),
+        }
+
     def get_container_stats(self, container_id: str) -> dict[str, Any]:
         stats = self.api.stats(container_id, stream=False)
         return self._transform_stats(stats, container_id)
@@ -155,13 +165,17 @@ class DockerService:
         stderr: bool = True,
         tail: str = "100",
     ) -> Iterable[bytes]:
-        return self.api.logs(
-            container=container_id,
-            stream=True,
-            follow=follow,
-            stdout=stdout,
-            stderr=stderr,
-            tail=tail,
+        tail_val: Any = int(tail) if tail.isdigit() else tail
+        return cast(
+            Iterable[bytes],
+            self.api.logs(
+                container=container_id,
+                stream=True,
+                follow=follow,
+                stdout=stdout,
+                stderr=stderr,
+                tail=tail_val,
+            ),
         )
 
     def exec_in_container(
@@ -240,9 +254,9 @@ class DockerService:
                 "pulled": False,
                 "pull_steps": [],
             }
-        except docker.errors.ImageNotFound:
+        except ImageNotFound:
             pass
-        except docker.errors.APIError as exc:
+        except APIError as exc:
             if getattr(exc, "status_code", None) != 404:
                 raise
 
@@ -621,10 +635,7 @@ class DockerService:
     ) -> dict[str, Any]:
         ipam_config = None
         if subnet:
-            cfg = {"Subnet": subnet}
-            if gateway:
-                cfg["Gateway"] = gateway
-            ipam_config = docker.types.IPAMConfig(pool_configs=[docker.types.IPAMPool(**cfg)])
+            ipam_config = IPAMConfig(pool_configs=[IPAMPool(subnet=subnet, gateway=gateway)])
 
         net = self.api.create_network(
             name=name,
@@ -716,6 +727,56 @@ class DockerService:
     def remove_image(self, image_id: str, force: bool = False) -> dict[str, Any]:
         self.client.images.remove(image=image_id, force=force)
         return {"id": image_id, "deleted": True}
+
+    def prune_images(self, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        result = self.api.prune_images(filters=filters)
+        return {
+            "imagesDeleted": result.get("ImagesDeleted") or [],
+            "spaceReclaimed": result.get("SpaceReclaimed", 0),
+        }
+
+    # --- System Management ---
+
+    def prune_system(
+        self,
+        containers: bool = True,
+        images: bool = True,
+        volumes: bool = False,
+        networks: bool = False,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        total_space_reclaimed = 0
+        containers_deleted: list[str] = []
+        images_deleted: list[dict[str, Any]] = []
+        volumes_deleted: list[str] = []
+        networks_deleted: list[str] = []
+
+        if containers:
+            c_res = self.prune_containers(filters=filters)
+            containers_deleted = c_res.get("containersDeleted", [])
+            total_space_reclaimed += c_res.get("spaceReclaimed", 0)
+
+        if images:
+            i_res = self.prune_images(filters=filters)
+            images_deleted = i_res.get("imagesDeleted", [])
+            total_space_reclaimed += i_res.get("spaceReclaimed", 0)
+
+        if volumes:
+            v_res = self.prune_volumes(filters=filters)
+            volumes_deleted = v_res.get("volumesDeleted", [])
+            total_space_reclaimed += v_res.get("spaceReclaimed", 0)
+
+        if networks:
+            n_res = self.prune_networks(filters=filters)
+            networks_deleted = n_res.get("networksDeleted", [])
+
+        return {
+            "containersDeleted": containers_deleted,
+            "imagesDeleted": images_deleted,
+            "volumesDeleted": volumes_deleted,
+            "networksDeleted": networks_deleted,
+            "spaceReclaimed": total_space_reclaimed,
+        }
 
 
 _docker_service: DockerService | None = None
