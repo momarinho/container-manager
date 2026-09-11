@@ -36,7 +36,7 @@ coverage/
 .nyc_output/
 
 # Documentation (local only)
-/docs/
+/docs/*
 !/docs/golang-roadmap.md
 
 # Python
@@ -49,4 +49,5 @@ venv/
 *.db
 *.sqlite3
 /cli/cmctl
-/cli/cmctl
+/agent/agent
+/proxy/proxy

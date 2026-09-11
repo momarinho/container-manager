@@ -12,12 +12,18 @@ import psutil
 
 from app.config import config
 from app.services.docker_service import DockerService
+from app.services.metrics_client import MetricsClient
 from app.utils.logger import logger
 
 
 class SystemStatsService:
-    def __init__(self, docker_service_factory: Callable[[], DockerService]) -> None:
+    def __init__(
+        self,
+        docker_service_factory: Callable[[], DockerService],
+        metrics_client: MetricsClient | None = None,
+    ) -> None:
         self._docker_service_factory = docker_service_factory
+        self.metrics_client = metrics_client or MetricsClient()
         self.history: deque[dict[str, Any]] = deque(maxlen=config.stats_history_size)
         self.current_stats: dict[str, Any] = self._empty_stats()
         self.subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
@@ -67,6 +73,8 @@ class SystemStatsService:
     async def _update_stats(self) -> None:
         try:
             stats = await asyncio.to_thread(self._collect_stats)
+            stats["containerMetrics"] = await self.metrics_client.get_container_metrics()
+
             self.current_stats = stats
             self.history.append(stats)
             for queue in tuple(self.subscribers):
@@ -140,6 +148,7 @@ class SystemStatsService:
             },
             "loadAvg": [0, 0, 0],
             "uptime": 0,
+            "containerMetrics": [],
         }
 
     @staticmethod
